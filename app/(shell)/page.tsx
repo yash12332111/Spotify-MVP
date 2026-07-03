@@ -8,7 +8,7 @@
 // Persona switcher updates persona_id and re-fetches /api/pick.
 // Session ID is persisted in localStorage (24h TTL, server-managed).
 // ─────────────────────────────────────────────────────────────
-import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { RotateCcw } from "lucide-react";

@@ -38,10 +38,10 @@ export type Snapshot = {
  */
 export const ISHITA_SNAPSHOT: Snapshot = {
   // Replace with real Supabase UUIDs after seed:
-  persona_id: "REPLACE_AFTER_SEED",
+  persona_id: "ff0815ae-5d1d-4cda-bf3d-753dedd28191",
 
   track: {
-    id: "REPLACE_AFTER_SEED",
+    id: "576cb8bd-5df1-401b-85dd-7ba4f1f2368c",
     title: "Kasoor",
     artist: "Prateek Kuhad",
     artwork_url:
@@ -56,6 +56,6 @@ export const ISHITA_SNAPSHOT: Snapshot = {
   },
 
   // Updated after seed script outputs the Groq-generated reason line:
-  reason_line: "Kasoor fits your wind-down perfectly",
+  reason_line: "Prateek Kuhad's mellow tunes fit Ishita's evening",
   decision: "card",
 };

@@ -1,53 +1,65 @@
-"use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Search as SearchIcon, Play, ExternalLink } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { SEED_TRACKS } from "@/lib/seedData";
 import { usePlayer } from "@/lib/player";
 
+type Track = typeof SEED_TRACKS[0];
+
 // Genre tiles — each maps to a mood/context filter on SEED_TRACKS
 const GENRES = [
-  { label: "Hindi Pop",   color: "#7c3aed", filter: (t: typeof SEED_TRACKS[0]) => t.artist.toLowerCase().includes("arijit") || t.artist.toLowerCase().includes("anuv") || t.artist.toLowerCase().includes("prateek") || t.artist.toLowerCase().includes("mithoon") },
-  { label: "Indie Folk",  color: "#0891b2", filter: (t: typeof SEED_TRACKS[0]) => t.mood === "dreamy" || t.mood === "melancholic" },
-  { label: "R&B",         color: "#be185d", filter: (t: typeof SEED_TRACKS[0]) => t.artist.toLowerCase().includes("clairo") || t.artist.toLowerCase().includes("dhruv") },
-  { label: "Electronic",  color: "#b45309", filter: (t: typeof SEED_TRACKS[0]) => t.energy >= 7 },
-  { label: "Sad Hours",   color: "#1d4ed8", filter: (t: typeof SEED_TRACKS[0]) => t.mood === "melancholic" || t.energy <= 3 },
-  { label: "Morning Run", color: "#065f46", filter: (t: typeof SEED_TRACKS[0]) => t.context_fit.includes("commute") || t.energy >= 6 },
-  { label: "Focus",       color: "#4d7c0f", filter: (t: typeof SEED_TRACKS[0]) => t.context_fit.includes("focus") || t.context_fit.includes("study") },
-  { label: "Late Night",  color: "#6b21a8", filter: (t: typeof SEED_TRACKS[0]) => t.context_fit.includes("wind_down") || t.context_fit.includes("lean_back") },
+const GENRES = [
+  { label: "Hindi Pop",   color: "#7c3aed", filter: (t: Track) => t.artist.toLowerCase().includes("arijit") || t.artist.toLowerCase().includes("anuv") || t.artist.toLowerCase().includes("prateek") || t.artist.toLowerCase().includes("mithoon") },
+  { label: "Indie Folk",  color: "#0891b2", filter: (t: Track) => t.mood === "dreamy" || t.mood === "melancholic" },
+  { label: "R&B",         color: "#be185d", filter: (t: Track) => t.artist.toLowerCase().includes("clairo") || t.artist.toLowerCase().includes("dhruv") },
+  { label: "Electronic",  color: "#b45309", filter: (t: Track) => t.energy >= 7 },
+  { label: "Sad Hours",   color: "#1d4ed8", filter: (t: Track) => t.mood === "melancholic" || t.energy <= 3 },
+  { label: "Morning Run", color: "#065f46", filter: (t: Track) => t.context_fit.includes("commute") || t.energy >= 6 },
+  { label: "Focus",       color: "#4d7c0f", filter: (t: Track) => t.context_fit.includes("focus") || t.context_fit.includes("study") },
+  { label: "Late Night",  color: "#6b21a8", filter: (t: Track) => t.context_fit.includes("wind_down") || t.context_fit.includes("lean_back") },
 ];
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<Track[]>(SEED_TRACKS); // fallback initially
   const { play, track: currentTrack, playing } = usePlayer();
+
+  useEffect(() => {
+    fetch("/api/catalog")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.tracks && d.tracks.length > 0) setCatalog(d.tracks);
+      })
+      .catch(() => {});
+  }, []);
 
   // Text search results
   const textResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return SEED_TRACKS.filter(
+    return catalog.filter(
       (t) =>
         t.title.toLowerCase().includes(q) ||
         t.artist.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, catalog]);
 
   // Genre filter results
   const genreResults = useMemo(() => {
     if (!activeGenre) return [];
     const genre = GENRES.find((g) => g.label === activeGenre);
     if (!genre) return [];
-    return SEED_TRACKS.filter(genre.filter);
-  }, [activeGenre]);
+    return catalog.filter(genre.filter);
+  }, [activeGenre, catalog]);
 
   const handlePlay = useCallback(
     (id: string) => {
-      const t = SEED_TRACKS.find((x) => x.id === id);
+      const t = catalog.find((x) => x.id === id);
       if (t) play(t);
     },
-    [play]
+    [play, catalog]
   );
 
   const handleGenreClick = useCallback(
@@ -60,7 +72,7 @@ export default function SearchPage() {
         // Auto-play a random track in this genre
         const genre = GENRES.find((g) => g.label === label);
         if (genre) {
-          const matches = SEED_TRACKS.filter(genre.filter);
+          const matches = catalog.filter(genre.filter);
           if (matches.length > 0) {
             const randomPick = matches[Math.floor(Math.random() * matches.length)];
             play(randomPick);
@@ -68,14 +80,14 @@ export default function SearchPage() {
         }
       }
     },
-    [activeGenre, play]
+    [activeGenre, play, catalog]
   );
 
   // Which results to show
   const showText  = query.trim().length > 0;
   const showGenre = !showText && activeGenre !== null && genreResults.length > 0;
 
-  const TrackList = ({ tracks }: { tracks: typeof SEED_TRACKS }) => (
+  const TrackList = ({ tracks }: { tracks: Track[] }) => (
     <div style={{ padding: "0 0 8px" }}>
       {tracks.map((t) => {
         const isActive = currentTrack?.id === t.id && playing;

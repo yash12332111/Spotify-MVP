@@ -1,6 +1,6 @@
 "use client";
 // app/(shell)/library/page.tsx
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { ChevronLeft, Play } from "lucide-react";
 import { SEED_PLAYLISTS, SEED_TRACKS } from "@/lib/seedData";
@@ -8,7 +8,17 @@ import { usePlayer } from "@/lib/player";
 
 export default function LibraryPage() {
   const [openPlaylistId, setOpenPlaylistId] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<typeof SEED_TRACKS>(SEED_TRACKS); // fallback
   const { play } = usePlayer();
+
+  useEffect(() => {
+    fetch("/api/catalog")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.tracks && d.tracks.length > 0) setCatalog(d.tracks);
+      })
+      .catch(() => {});
+  }, []);
 
   const openPlaylist = useCallback((id: string) => {
     setOpenPlaylistId(id);
@@ -20,10 +30,10 @@ export default function LibraryPage() {
 
   const handlePlayTrack = useCallback(
     (trackId: string) => {
-      const t = SEED_TRACKS.find((x) => x.id === trackId);
+      const t = catalog.find((x) => x.id === trackId);
       if (t) play(t);
     },
-    [play]
+    [play, catalog]
   );
 
   const playlist = openPlaylistId
@@ -33,7 +43,7 @@ export default function LibraryPage() {
   // ── Playlist tracklist view ──────────────────────────────
   if (playlist) {
     const tracks = playlist.track_ids
-      .map((id) => SEED_TRACKS.find((t) => t.id === id))
+      .map((id) => catalog.find((t) => t.id === id))
       .filter(Boolean) as typeof SEED_TRACKS;
 
     return (

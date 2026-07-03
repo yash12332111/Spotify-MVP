@@ -70,12 +70,24 @@ async function bootstrapFreshSession(
 ): Promise<BootstrapResult> {
   const sid = session_id ?? crypto.randomUUID();
 
-  // Copy persona defaults into session_personas
-  const { data: personaRows } = await supabase
-    .from("personas")
-    .select("id, taste_vector");
+  // 1. Parallelize initial reads (personas and top discovery tracks)
+  const [personaResult, tracksResult] = await Promise.all([
+    supabase.from("personas").select("id, taste_vector"),
+    supabase
+      .from("tracks")
+      .select("id")
+      .eq("role", "discovery")
+      .eq("playable", true)
+      .order("survival_rate_similar_users", { ascending: false })
+      .limit(10)
+  ]);
 
-  // 1. Batch upsert all personas into session_personas
+  const personaRows = personaResult.data;
+  const discoveryTracks = tracksResult.data;
+
+  // 2. Parallelize batch upserts
+  const upsertPromises = [];
+
   if (personaRows && personaRows.length > 0) {
     const sessionPersonasToUpsert = personaRows.map(p => ({
       session_id: sid,
@@ -85,19 +97,9 @@ async function bootstrapFreshSession(
       simulated_day: 0,
       last_active_at: new Date().toISOString(),
     }));
-    await supabase.from("session_personas").upsert(sessionPersonasToUpsert);
+    upsertPromises.push(supabase.from("session_personas").upsert(sessionPersonasToUpsert));
   }
 
-  // 2. Fetch all discovery tracks once
-  const { data: discoveryTracks } = await supabase
-    .from("tracks")
-    .select("id")
-    .eq("role", "discovery")
-    .eq("playable", true)
-    .order("survival_rate_similar_users", { ascending: false })
-    .limit(10);
-
-  // 3. Batch upsert session_rotation
   if (discoveryTracks && discoveryTracks.length >= 2) {
     const rotationUpserts = [];
     for (const personaId of personaIds) {
@@ -119,9 +121,11 @@ async function bootstrapFreshSession(
       });
     }
     if (rotationUpserts.length > 0) {
-      await supabase.from("session_rotation").upsert(rotationUpserts);
+      upsertPromises.push(supabase.from("session_rotation").upsert(rotationUpserts));
     }
   }
+
+  await Promise.all(upsertPromises);
 
   return { session_id: sid, persona_ids: personaIds, is_fresh: true };
 }

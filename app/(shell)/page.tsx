@@ -1,14 +1,14 @@
 "use client";
 // app/(shell)/page.tsx — Home
 // ─────────────────────────────────────────────────────────────
-// ?state=a  → One Song In card visible (default)
-// ?state=c  → card in "added" state
-// ?state=d  → silent (no card)
+// Phase 2: renders ISHITA_SNAPSHOT immediately (instant first paint),
+// then concurrently fetches /api/pick. When result arrives (≤3s),
+// swaps in the live AI result. If >3s, keeps snapshot (cold-start guard).
 //
-// Time-of-day greeting runs on client only to avoid hydration
-// mismatch (E1-10). useSearchParams wrapped in Suspense by parent.
+// Persona switcher updates persona_id and re-fetches /api/pick.
+// Session ID is persisted in localStorage (24h TTL, server-managed).
 // ─────────────────────────────────────────────────────────────
-import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { RotateCcw } from "lucide-react";
@@ -16,11 +16,10 @@ import { QuickPickGrid } from "@/components/QuickPickGrid";
 import { OneSongCard } from "@/components/OneSongCard";
 import { RotationStrip } from "@/components/RotationStrip";
 import { usePlayer } from "@/lib/player";
+import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 import {
   QUICK_PICKS,
-  DISCOVERY_CARD_TRACK,
   SEED_ROTATION,
-  SEED_PERSONAS,
   SEED_TRACKS,
 } from "@/lib/seedData";
 
@@ -32,107 +31,187 @@ function greeting(): string {
   return "Good evening";
 }
 
-// ── Persona switcher state ───────────────────────────────────
-const _PERSONA_IDS = SEED_PERSONAS.map((p) => p.id); void _PERSONA_IDS;
+type PickResult = {
+  decision: "card" | "silence";
+  track?: typeof ISHITA_SNAPSHOT.track;
+  reason_line?: string;
+  trace?: Record<string, unknown>;
+};
+
+type LivePersona = {
+  id: string;
+  name: string;
+  default_moment: string;
+  default_time: string;
+};
+
+const PICK_TIMEOUT_MS = 3000; // cold-start guard (2F)
+
+// ── Session ID (localStorage, 24h managed by server) ─────────
+function getOrCreateSessionId(): string {
+  if (typeof window === "undefined") return "";
+  const stored = localStorage.getItem("onesong_session_id");
+  if (stored) return stored;
+  const id = crypto.randomUUID();
+  localStorage.setItem("onesong_session_id", id);
+  return id;
+}
 
 // ── Inner component that reads searchParams ──────────────────
 function HomeInner() {
   const searchParams = useSearchParams();
-  const rawState = searchParams.get("state") ?? "a";
-  const trackId = searchParams.get("trackId");
-  
-  const cardState = (["a", "c", "d"].includes(rawState) ? rawState : "a") as
-    | "a"
-    | "c"
-    | "d";
-
-  const cardTrack = useMemo(() => {
-    if (trackId) {
-      const found = SEED_TRACKS.find((t) => t.id === trackId);
-      if (found) return found;
-    }
-    return DISCOVERY_CARD_TRACK;
-  }, [trackId]);
 
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
-  const [personaIdx, setPersonaIdx] = useState(0);
   const { play } = usePlayer();
 
-  // Client-only greeting to avoid hydration mismatch (E1-10)
+  // Live personas from API (falls back to snapshot persona name)
+  const [personas, setPersonas] = useState<LivePersona[]>([]);
+  const [personaIdx, setPersonaIdx] = useState(0);
+
+  // Pick state: start from snapshot (instant paint), swap to live
+  const [pickResult, setPickResult] = useState<PickResult>({
+    decision: "card",
+    track: ISHITA_SNAPSHOT.track as typeof ISHITA_SNAPSHOT.track,
+    reason_line: ISHITA_SNAPSHOT.reason_line,
+  });
+  const [pickLoading, setPickLoading] = useState(false);
+  const pickControllerRef = useRef<AbortController | null>(null);
+
+  // Session ID ref (stable, no re-render)
+  const sessionIdRef = useRef<string>("");
+
+  // ── Initialise on mount ──────────────────────────────────────
   useEffect(() => {
+    sessionIdRef.current = getOrCreateSessionId();
     setGreeting(greeting());
+
+    // Load live personas
+    fetch("/api/personas")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.personas) && d.personas.length > 0) {
+          setPersonas(d.personas);
+        }
+      })
+      .catch(() => {/* silently ignore */});
   }, []);
 
-  const persona = SEED_PERSONAS[personaIdx];
+  // ── Fetch live pick ──────────────────────────────────────────
+  const fetchPick = useCallback(async (personaId: string) => {
+    // Cancel in-flight request (E4-4)
+    if (pickControllerRef.current) pickControllerRef.current.abort();
+    const ctrl = new AbortController();
+    pickControllerRef.current = ctrl;
+
+    setPickLoading(true);
+
+    // Cold-start guard: if >3s, keep snapshot, swap when resolved
+    const timeoutId = setTimeout(() => {
+      setPickLoading(false); // show snapshot, fetch continues in background
+    }, PICK_TIMEOUT_MS);
+
+    try {
+      const res = await fetch("/api/pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persona_id: personaId,
+          session_id: sessionIdRef.current || null,
+        }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error(`pick failed: ${res.status}`);
+      const data = (await res.json()) as PickResult & { trace?: { session_id?: string } };
+
+      // Update session_id if server issued a new one
+      if (data.trace?.session_id) {
+        const sid = data.trace.session_id as string;
+        sessionIdRef.current = sid;
+        localStorage.setItem("onesong_session_id", sid);
+      }
+
+      setPickResult(data);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      // AbortError = intentional cancel, not an error
+      if (err instanceof Error && err.name !== "AbortError") {
+        // Keep showing snapshot on error — never blank
+      }
+    } finally {
+      setPickLoading(false);
+    }
+  }, []);
+
+  // ── Fetch pick whenever persona changes ──────────────────────
+  useEffect(() => {
+    if (personas.length === 0) return;
+    const persona = personas[personaIdx];
+    if (persona) fetchPick(persona.id);
+  }, [personas, personaIdx, fetchPick]);
+
+  // ── Persona displayed ────────────────────────────────────────
+  const currentPersona = personas[personaIdx];
+  const personaName = currentPersona?.name ?? "Ishita";
 
   const switchPersona = useCallback(() => {
-    setPersonaIdx((i) => (i + 1) % SEED_PERSONAS.length);
-  }, []);
+    setPersonaIdx((i) => (i + 1) % Math.max(personas.length, 1));
+  }, [personas.length]);
 
-  // "Made for you" shelf — 4 tracks not in quick-picks
+  // Track shown in the card (from live pick or URL param override)
+  const trackIdParam = searchParams.get("trackId");
+  const cardTrack = (() => {
+    if (trackIdParam) {
+      const found = SEED_TRACKS.find((t) => t.id === trackIdParam);
+      if (found) return found;
+    }
+    return pickResult.decision === "card" && pickResult.track
+      ? pickResult.track
+      : ISHITA_SNAPSHOT.track;
+  })();
+
+  const reasonLine = pickResult.reason_line ?? ISHITA_SNAPSHOT.reason_line;
+  const showCard = pickResult.decision !== "silence" || !!trackIdParam;
+
+  // "Made for you" shelf
   const madeForYou = SEED_TRACKS.slice(4, 8);
 
   return (
-    <div>
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <div
-        style={{
-          background: "linear-gradient(180deg, #1a3a2a 0%, var(--bg) 100%)",
-          padding: "52px 16px 16px",
-        }}
-      >
-        {/* Profile row */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 18,
-          }}
-        >
-          {/* Avatar + greeting */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              id="avatar-persona-switch"
-              onClick={switchPersona}
-              aria-label="Switch persona"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                background: persona.avatar_color,
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: 15,
-                color: "#fff",
-              }}
-            >
-              {persona.avatar_initial}
-            </button>
-            <div>
-              <p className="text-xs text-muted">{greeting_}</p>
-              <p className="text-sm font-bold">{persona.name}</p>
-            </div>
-          </div>
-
-          {/* Refresh / advance-day glyph */}
+    <div style={{ paddingTop: 52 }}>
+      {/* ── Top bar ───────────────────────────────────────────── */}
+      <div style={{ padding: "0 16px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          {/* Avatar / persona switcher */}
+          <button
+            id="persona-switcher-btn"
+            onClick={switchPersona}
+            aria-label="Switch persona"
+            style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "var(--green)", border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 700, fontSize: 13, color: "#000",
+            }}
+          >
+            {personaName[0]}
+          </button>
+          <span className="text-base font-bold">{greeting_}</span>
           <button
             id="home-refresh-btn"
             aria-label="Advance day and get new pick"
+            onClick={() => {
+              if (currentPersona) fetchPick(currentPersona.id);
+            }}
             style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--text-primary)",
-              padding: 8,
+              background: pickLoading ? "rgba(255,255,255,0.08)" : "none",
+              border: "none", cursor: "pointer",
+              color: "var(--text-primary)", padding: 8, borderRadius: 6,
+              transition: "background 0.2s",
             }}
           >
-            <RotateCcw size={22} />
+            <RotateCcw size={22} style={{ animation: pickLoading ? "spin 1s linear infinite" : "none" }} />
           </button>
         </div>
 
@@ -151,38 +230,61 @@ function HomeInner() {
         </div>
       </div>
 
-      {/* ── One Song In card ────────────────────────────────── */}
+      {/* ── One Song In card ─────────────────────────────────── */}
       <div style={{ padding: "16px 16px 0" }}>
-        <OneSongCard
-          track={cardTrack}
-          reasonLine={
-            cardTrack.id === DISCOVERY_CARD_TRACK.id 
-              ? "Sounds like Prateek Kuhad — calm tempo, indie feel, 9 PM vibe"
-              : `Because you searched for ${cardTrack.title}`
-          }
-          initialState={cardState}
-        />
+        {pickLoading ? (
+          /* Skeleton shimmer while live pick loads */
+          <div
+            id="pick-skeleton"
+            style={{
+              height: 200, borderRadius: 12,
+              background: "linear-gradient(90deg, var(--raised) 25%, var(--surface) 50%, var(--raised) 75%)",
+              backgroundSize: "200% 100%",
+              animation: "shimmer 1.4s infinite",
+            }}
+          />
+        ) : showCard ? (
+          <OneSongCard
+            track={cardTrack as Parameters<typeof OneSongCard>[0]["track"]}
+            reasonLine={reasonLine}
+            initialState="a"
+          />
+        ) : (
+          /* Silence state */
+          <div
+            style={{
+              padding: "24px 16px", borderRadius: 12,
+              background: "var(--raised)", textAlign: "center",
+            }}
+          >
+            <p className="text-sm text-muted">
+              Nothing new right now
+            </p>
+            {pickResult.trace && (
+              <p className="text-xs text-muted" style={{ marginTop: 4, opacity: 0.6 }}>
+                {String((pickResult.trace as { pick_or_silence_cause?: string }).pick_or_silence_cause ?? "")}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ── Quick-pick grid ──────────────────────────────────── */}
+      {/* ── Quick-pick grid ───────────────────────────────────── */}
       <div style={{ padding: "20px 0 0" }}>
-        <h2
-          className="text-base font-bold"
-          style={{ padding: "0 16px", marginBottom: 12 }}
-        >
+        <h2 className="text-base font-bold" style={{ padding: "0 16px", marginBottom: 12 }}>
           Quick picks
         </h2>
         <QuickPickGrid tracks={QUICK_PICKS} />
       </div>
 
-      {/* ── Rotation strip ───────────────────────────────────── */}
+      {/* ── Rotation strip ────────────────────────────────────── */}
       <RotationStrip tracks={SEED_ROTATION} />
 
       {/* ── Made for you ─────────────────────────────────────── */}
       <div className="shelf">
         <div className="shelf-header">
           <h2 className="text-base font-bold">Made for you</h2>
-          <span className="text-xs text-muted">Based on {persona.name}</span>
+          <span className="text-xs text-muted">Based on {personaName}</span>
         </div>
         <div className="h-scroll">
           {madeForYou.map((t) => (
@@ -192,26 +294,16 @@ function HomeInner() {
               onClick={() => play(t)}
               aria-label={`Play ${t.title} by ${t.artist}`}
               style={{
-                flexShrink: 0,
-                width: 140,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: 0,
-                textAlign: "left",
+                flexShrink: 0, width: 140,
+                background: "none", border: "none",
+                cursor: "pointer", padding: 0, textAlign: "left",
               }}
             >
-              <div
-                style={{
-                  width: 140,
-                  height: 140,
-                  borderRadius: 6,
-                  overflow: "hidden",
-                  marginBottom: 8,
-                  background: "var(--raised)",
-                  position: "relative",
-                }}
-              >
+              <div style={{
+                width: 140, height: 140, borderRadius: 6,
+                overflow: "hidden", marginBottom: 8,
+                background: "var(--raised)", position: "relative",
+              }}>
                 <Image
                   src={t.artwork_url}
                   alt={t.title}
@@ -228,9 +320,19 @@ function HomeInner() {
         </div>
       </div>
 
-      {/* Bottom padding */}
       <div style={{ height: 16 }} />
 
+      {/* shimmer keyframes */}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

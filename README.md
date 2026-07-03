@@ -2,7 +2,7 @@
 
 > A deployed, functional Spotify-mirror app demonstrating the One Song In solution end-to-end: no-intent open → AI-inferenced three-filter pick → confidence-gated card → keep/dismiss signal loop → rotation survival.
 
-**Live demo:** _add your Vercel URL here after deploy_
+**Live demo:** https://spotify-mvp-chi.vercel.app/
 
 ---
 
@@ -80,8 +80,8 @@ Add these in **GitHub → Settings → Secrets → Actions**:
 | Secret | Value |
 |--------|-------|
 | `SUPABASE_URL` | Same as the env var |
-| `SUPABASE_ANON_KEY` | The **anon/public** key (not the service key) |
-| `VERCEL_PRODUCTION_URL` | Your production Vercel URL (e.g. `https://onesong.vercel.app`) |
+| `SUPABASE_SERVICE_KEY` | Same as the Vercel env var (the `eyJ...` JWT) |
+| `VERCEL_PRODUCTION_URL` | `https://spotify-mvp-chi.vercel.app` |
 
 > **Disable the Action after July 15** by deleting `.github/workflows/keep-alive.yml` or commenting out the `schedule` trigger.
 

@@ -33,13 +33,12 @@ jobs:
     steps:
       - name: Hit Supabase REST endpoint (real DB query)
         # Querying /rest/v1/ triggers schema introspection — genuine Postgres
-        # activity. Using the anon key (not the service key) is intentional:
-        # the service key should never be in GitHub secrets if avoidable.
+        # activity. Using the service key here (same as in Vercel env vars).
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             "${{ secrets.SUPABASE_URL }}/rest/v1/" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}")
           echo "Supabase REST ping status: $STATUS"
           # 200 or 400 both mean the DB is alive (400 = no resource specified, DB responded)
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "400" ]; then

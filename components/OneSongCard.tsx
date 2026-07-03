@@ -8,7 +8,7 @@
 //
 // Phase 3: buttons fire /api/signal (keep | dismiss | ignore)
 // ─────────────────────────────────────────────────────────────
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { usePlayer } from "@/lib/player";
 import type { Track } from "@/lib/seedData";
@@ -25,6 +25,8 @@ type Props = {
   momentLabel?: string;
   onKeep?: () => void;    // called after keep signal fires
   onDismiss?: () => void; // called after dismiss signal fires
+  // Phase 4 props
+  onReasonClick?: () => void;
 };
 
 async function fireSignal(opts: {
@@ -60,16 +62,32 @@ export function OneSongCard({
   momentLabel,
   onKeep,
   onDismiss,
+  onReasonClick,
 }: Props) {
   const [state, setState] = useState<CardState>(initialState);
   const [melting, setMelting] = useState(false);
   const [addDisabled, setAddDisabled] = useState(false);
   const [dismissDisabled, setDismissDisabled] = useState(false);
+  const [showCoachMark, setShowCoachMark] = useState(false);
   const { play } = usePlayer();
+
+  useEffect(() => {
+    if (initialState === "a" && !localStorage.getItem("coach_mark_1_done")) {
+      setShowCoachMark(true);
+    }
+  }, [initialState]);
+
+  const dismissCoachMark = useCallback(() => {
+    if (showCoachMark) {
+      localStorage.setItem("coach_mark_1_done", "true");
+      setShowCoachMark(false);
+    }
+  }, [showCoachMark]);
 
   const handleAdd = useCallback(() => {
     if (addDisabled) return; // E3-1: prevent double-tap
     setAddDisabled(true);
+    dismissCoachMark();
 
     // E3-2: play synchronously BEFORE any await
     play(track);
@@ -89,11 +107,12 @@ export function OneSongCard({
 
     setMelting(true);
     setTimeout(() => setState("c"), 400);
-  }, [addDisabled, play, track, sessionId, personaId, momentLabel, onKeep]);
+  }, [addDisabled, play, track, sessionId, personaId, momentLabel, onKeep, dismissCoachMark]);
 
   const handleDismiss = useCallback(() => {
     if (dismissDisabled) return; // E3-1: prevent double-tap
     setDismissDisabled(true);
+    dismissCoachMark();
 
     // Fire signal in background
     if (sessionId && personaId) {
@@ -221,11 +240,44 @@ export function OneSongCard({
             <p className="text-sm text-muted truncate" style={{ marginBottom: 6 }}>
               {track.artist}
             </p>
-            <p className="text-xs" style={{ color: "#B3B3B3", lineHeight: 1.5 }}>
-              {reasonLine}
-            </p>
+            <button
+              onClick={onReasonClick}
+              style={{ background: "none", border: "none", padding: 0, margin: 0, textAlign: "left", cursor: "pointer", width: "100%" }}
+            >
+              <p className="text-xs" style={{ color: "#B3B3B3", lineHeight: 1.5, display: "inline" }}>
+                {reasonLine} <span style={{ opacity: 0.5, fontSize: 10 }}>ⓘ</span>
+              </p>
+            </button>
           </div>
         </div>
+
+        {/* Coach Mark Beat 1 */}
+        {showCoachMark && (
+          <div
+            style={{
+              position: "absolute",
+              top: -48,
+              left: 16,
+              background: "var(--green)",
+              color: "#000",
+              padding: "8px 12px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              animation: "bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+              zIndex: 50,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span>Spotify eased one new song in. Keep it or wave it off.</span>
+            <button onClick={(e) => { e.stopPropagation(); dismissCoachMark(); }} style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "#000" }}>✕</button>
+            {/* little triangle pointer */}
+            <div style={{ position: "absolute", bottom: -6, left: 16, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid var(--green)" }} />
+          </div>
+        )}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 10, padding: "0 16px 16px" }}>

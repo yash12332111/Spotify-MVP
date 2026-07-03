@@ -1,12 +1,10 @@
 "use client";
 // app/(shell)/page.tsx — Home
 // ─────────────────────────────────────────────────────────────
-// Phase 3: signal loop wired.
-// - "Add it in" → POST /api/signal { action: "keep" } + play
-// - "Not now"   → POST /api/signal { action: "dismiss" } + auto-fetch next pick
-// - ⟳ button    → ignore signal → advance-day → pick
-// - Persona switch while card shown → ignore signal first
-// - RotationStrip fetches live from GET /api/rotation
+// Phase 4: blind-evaluator layer
+// - Coach Marks (Beat 1 on card, Beat 2 on avatar)
+// - PersonaSheet for context switching
+// - WhyThisSongSheet for explanation
 // ─────────────────────────────────────────────────────────────
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
@@ -15,6 +13,8 @@ import { RotateCcw } from "lucide-react";
 import { QuickPickGrid } from "@/components/QuickPickGrid";
 import { OneSongCard } from "@/components/OneSongCard";
 import { RotationStrip } from "@/components/RotationStrip";
+import { PersonaSheet } from "@/components/PersonaSheet";
+import { WhyThisSongSheet } from "@/components/WhyThisSongSheet";
 import { usePlayer } from "@/lib/player";
 import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 import { SEED_TRACKS } from "@/lib/seedData";
@@ -60,7 +60,6 @@ function HomeInner() {
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
   const [catalog, setCatalog] = useState<typeof SEED_TRACKS>([]);
-  const [showTooltip, setShowTooltip] = useState(false);
   const { play } = usePlayer();
 
   // Live personas from API (falls back to snapshot persona name)
@@ -82,14 +81,15 @@ function HomeInner() {
   // Rotation strip refresh key — increment to trigger re-fetch
   const [rotationRefreshKey, setRotationRefreshKey] = useState(0);
 
+  // Phase 4 sheets & coach marks
+  const [isPersonaSheetOpen, setIsPersonaSheetOpen] = useState(false);
+  const [isWhySheetOpen, setIsWhySheetOpen] = useState(false);
+  const [showCoachMark2, setShowCoachMark2] = useState(false);
+
   // ── Initialise on mount ──────────────────────────────────────
   useEffect(() => {
     sessionIdRef.current = getOrCreateSessionId();
     setGreeting(greeting());
-
-    if (!localStorage.getItem("hide_persona_tooltip")) {
-      setShowTooltip(true);
-    }
 
     // Load live personas
     fetch("/api/personas")
@@ -191,14 +191,21 @@ function HomeInner() {
     } catch { /* fire-and-forget */ }
   }, []);
 
-  const switchPersona = useCallback(async () => {
+  const switchPersona = useCallback(async (newPersonaId: string) => {
     // If card is currently shown (state a), fire ignore signal first (3G)
     const currentPersona = personas[personaIdx];
     if (currentPersona && pickResult.decision === "card" && pickResult.track) {
       await fireIgnoreSignal(pickResult.track.id, currentPersona.id);
     }
-    setPersonaIdx((i) => (i + 1) % Math.max(personas.length, 1));
+    const newIdx = personas.findIndex((p) => p.id === newPersonaId);
+    if (newIdx !== -1) setPersonaIdx(newIdx);
   }, [personas, personaIdx, pickResult, fireIgnoreSignal]);
+
+  const triggerCoachMark2Check = useCallback(() => {
+    if (!localStorage.getItem("coach_mark_2_done")) {
+      setShowCoachMark2(true);
+    }
+  }, []);
 
   // Track shown in the card (from live pick or URL param override)
   const trackIdParam = searchParams.get("trackId");
@@ -236,10 +243,6 @@ function HomeInner() {
   // "Made for you" shelf — next 4
   const madeForYou = shuffledCatalog.slice(6, 10);
 
-  const dismissTooltip = () => {
-    localStorage.setItem("hide_persona_tooltip", "true");
-    setShowTooltip(false);
-  };
 
   return (
     <div style={{ paddingTop: 52 }}>
@@ -249,71 +252,51 @@ function HomeInner() {
           {/* Avatar / persona switcher */}
           <div style={{ position: "relative" }}>
             <button
-              id="persona-switcher-btn"
-              onClick={switchPersona}
-              aria-label="Switch persona"
+              id="home-avatar-btn"
+              onClick={() => {
+                if (showCoachMark2) {
+                  localStorage.setItem("coach_mark_2_done", "true");
+                  setShowCoachMark2(false);
+                }
+                setIsPersonaSheetOpen(true);
+              }}
               style={{
-                width: 32, height: 32, borderRadius: "50%",
-                background: "var(--green)", border: "none", cursor: "pointer",
+                width: 36, height: 36, borderRadius: "50%",
+                background: personaName === "Ishita" ? "#b91d54" : personaName === "Vaishnavi" ? "#1db954" : "#1d4ed8",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 700, fontSize: 13, color: "#000",
+                color: "white", fontWeight: "bold", fontSize: 16,
+                border: "none", cursor: "pointer",
               }}
             >
-              {personaName[0]}
+              {personaName.charAt(0)}
             </button>
-            {showTooltip && (
+
+            {/* Coach Mark Beat 2 */}
+            {showCoachMark2 && (
               <div
                 style={{
                   position: "absolute",
                   top: "100%",
-                  left: -8, // slight offset to align better
-                  marginTop: 14,
+                  marginTop: 12,
+                  left: 0,
                   background: "var(--green)",
                   color: "#000",
-                  padding: "16px",
-                  borderRadius: 12,
-                  width: 260,
-                  zIndex: 9999, // High z-index to stay above everything
-                  boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
-                  animation: "bounceIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
-                  transformOrigin: "top left",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                  animation: "bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                  zIndex: 50,
+                  width: 200,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                {/* Arrow pointing up */}
-                <div style={{
-                  position: "absolute", 
-                  top: -8, 
-                  left: 18,
-                  width: 0, 
-                  height: 0,
-                  borderLeft: "8px solid transparent",
-                  borderRight: "8px solid transparent",
-                  borderBottom: "8px solid var(--green)",
-                }} />
-                
-                <h3 className="text-base font-bold mb-1" style={{ color: "#000" }}>Change the persona!</h3>
-                <p className="text-sm mb-4" style={{ color: "rgba(0,0,0,0.8)", lineHeight: 1.4 }}>
-                  Tap here to switch users and see how the AI instantly adapts the entire app's recommendations.
-                </p>
-                <button
-                  onClick={dismissTooltip}
-                  style={{
-                    background: "rgba(0,0,0,0.15)",
-                    color: "#000",
-                    border: "none",
-                    borderRadius: 20,
-                    padding: "8px 16px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    width: "100%",
-                    transition: "background 0.2s",
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.15)")}
-                >
-                  Got it
-                </button>
+                <span>See how it behaves for other listeners.</span>
+                <button onClick={(e) => { e.stopPropagation(); localStorage.setItem("coach_mark_2_done", "true"); setShowCoachMark2(false); }} style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "#000" }}>✕</button>
+                <div style={{ position: "absolute", top: -6, left: 12, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "6px solid var(--green)" }} />
               </div>
             )}
           </div>
@@ -391,10 +374,15 @@ function HomeInner() {
             sessionId={sessionIdRef.current || undefined}
             personaId={currentPersona?.id}
             momentLabel={currentPersona?.default_moment}
-            onKeep={() => setRotationRefreshKey((k) => k + 1)}
+            onKeep={() => {
+              setRotationRefreshKey((k) => k + 1);
+              triggerCoachMark2Check();
+            }}
             onDismiss={() => {
               if (currentPersona) fetchPick(currentPersona.id);
+              triggerCoachMark2Check();
             }}
+            onReasonClick={() => setIsWhySheetOpen(true)}
           />
         ) : (
           /* Silence state */
@@ -408,9 +396,13 @@ function HomeInner() {
               Nothing new right now
             </p>
             {pickResult.trace && (
-              <p className="text-xs text-muted" style={{ marginTop: 4, opacity: 0.6 }}>
-                {String((pickResult.trace as { pick_or_silence_cause?: string }).pick_or_silence_cause ?? "")}
-              </p>
+              <button
+                onClick={() => setIsWhySheetOpen(true)}
+                className="text-xs text-muted"
+                style={{ marginTop: 8, background: "none", border: "none", padding: "4px 8px", cursor: "pointer", textDecoration: "underline", opacity: 0.8 }}
+              >
+                Why?
+              </button>
             )}
           </div>
         )}
@@ -472,6 +464,21 @@ function HomeInner() {
       </div>
 
       <div style={{ height: 16 }} />
+
+      <PersonaSheet
+        isOpen={isPersonaSheetOpen}
+        onClose={() => setIsPersonaSheetOpen(false)}
+        personas={personas}
+        activePersonaId={currentPersona?.id}
+        onSelect={switchPersona}
+      />
+
+      <WhyThisSongSheet
+        isOpen={isWhySheetOpen}
+        onClose={() => setIsWhySheetOpen(false)}
+        trace={pickResult.trace as any}
+        survivalRate={(cardTrack as any)?._rate ?? 0.75}
+      />
 
       {/* shimmer and bounce keyframes */}
       <style>{`

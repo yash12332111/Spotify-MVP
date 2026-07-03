@@ -180,12 +180,15 @@ export async function POST(req: NextRequest) {
       (row as { track_id: string; survival_rate: number }).survival_rate;
   }
 
-  // Rank by survival rate (fallback to track's own field)
+  // Rank by survival rate with high random jitter for demo purposes
   const ranked = finalPool
-    .map((t) => ({
-      ...t,
-      _rate: survivalMap[t.id] ?? t.survival_rate_similar_users ?? 0.5,
-    }))
+    .map((t) => {
+      const baseRate = survivalMap[t.id] ?? t.survival_rate_similar_users ?? 0.5;
+      return {
+        ...t,
+        _rate: baseRate + (Math.random() * 0.5), // High jitter so it changes every time
+      };
+    })
     .sort((a, b) => b._rate - a._rate);
 
   const pick = ranked[0];

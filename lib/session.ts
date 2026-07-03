@@ -75,18 +75,18 @@ async function bootstrapFreshSession(
     .from("personas")
     .select("id, taste_vector");
 
-  const promises: Promise<any>[] = [];
+  const promises: any[] = [];
 
   for (const p of personaRows ?? []) {
     promises.push(
-      supabase.from("session_personas").upsert({
+      (async () => await supabase.from("session_personas").upsert({
         session_id: sid,
         persona_id: p.id,
         taste_vector: p.taste_vector,
         throttle_multipliers: { wind_down: 1.0, lean_back: 1.0, commute: 1.0, focus: 1.0 },
         simulated_day: 0,
         last_active_at: new Date().toISOString(),
-      })
+      }))()
     );
   }
 

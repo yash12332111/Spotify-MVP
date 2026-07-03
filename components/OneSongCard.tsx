@@ -1,14 +1,14 @@
 "use client";
 // components/OneSongCard.tsx
 // ─────────────────────────────────────────────────────────────
-// Three states (toggled via ?state= dev param):
+// Three states:
 //   A — Card: art, track, artist, reason, [Add it in] / [Not now]
 //   C — Added: micro-confirmation, card melts out
 //   D — Silent: nothing (Home is pixel-normal)
 //
-// Phase 1: static data + visual-only buttons (Phase 3 wires signals)
+// Phase 3: buttons fire /api/signal (keep | dismiss | ignore)
 // ─────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Image from "next/image";
 import { usePlayer } from "@/lib/player";
 import type { Track } from "@/lib/seedData";
@@ -19,40 +19,106 @@ type Props = {
   track: Track;
   reasonLine?: string;
   initialState?: CardState;
+  // Phase 3 signal props
+  sessionId?: string;
+  personaId?: string;
+  momentLabel?: string;
+  onKeep?: () => void;    // called after keep signal fires
+  onDismiss?: () => void; // called after dismiss signal fires
 };
+
+async function fireSignal(opts: {
+  sessionId: string;
+  personaId: string;
+  trackId: string;
+  action: "keep" | "dismiss" | "ignore";
+  momentLabel?: string;
+}) {
+  try {
+    await fetch("/api/signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: opts.sessionId,
+        persona_id: opts.personaId,
+        track_id: opts.trackId,
+        action: opts.action,
+        moment_label: opts.momentLabel,
+      }),
+    });
+  } catch {
+    // Fire-and-forget — never block UI on signal failure
+  }
+}
 
 export function OneSongCard({
   track,
   reasonLine = "Based on your wind-down listening this week",
   initialState = "a",
+  sessionId,
+  personaId,
+  momentLabel,
+  onKeep,
+  onDismiss,
 }: Props) {
   const [state, setState] = useState<CardState>(initialState);
   const [melting, setMelting] = useState(false);
+  const [addDisabled, setAddDisabled] = useState(false);
+  const [dismissDisabled, setDismissDisabled] = useState(false);
   const { play } = usePlayer();
 
-  // Melt → then disappear
   const handleAdd = useCallback(() => {
-    // tap → synchronously start play (E1-2)
+    if (addDisabled) return; // E3-1: prevent double-tap
+    setAddDisabled(true);
+
+    // E3-2: play synchronously BEFORE any await
     play(track);
+
+    // Fire signal in background — never await before play
+    if (sessionId && personaId) {
+      fireSignal({
+        sessionId,
+        personaId,
+        trackId: track.id,
+        action: "keep",
+        momentLabel,
+      }).then(() => onKeep?.());
+    } else {
+      onKeep?.();
+    }
+
     setMelting(true);
     setTimeout(() => setState("c"), 400);
-  }, [play, track]);
+  }, [addDisabled, play, track, sessionId, personaId, momentLabel, onKeep]);
 
   const handleDismiss = useCallback(() => {
+    if (dismissDisabled) return; // E3-1: prevent double-tap
+    setDismissDisabled(true);
+
+    // Fire signal in background
+    if (sessionId && personaId) {
+      fireSignal({
+        sessionId,
+        personaId,
+        trackId: track.id,
+        action: "dismiss",
+        momentLabel,
+      }).then(() => onDismiss?.());
+    } else {
+      onDismiss?.();
+    }
+
     setMelting(true);
     setTimeout(() => setState("d"), 400);
-  }, []);
+  }, [dismissDisabled, track, sessionId, personaId, momentLabel, onDismiss]);
 
   // State D — silent: render nothing
   if (state === "d") return null;
 
-  // State C — added confirmation (briefly shown, then component stays)
+  // State C — added confirmation
   if (state === "c") {
     return (
-      <div
-        className="shelf fade-in"
-        style={{ paddingTop: 0 }}
-      >
+      <div className="shelf fade-in" style={{ paddingTop: 0 }}>
         <div
           style={{
             background: "var(--surface)",
@@ -81,7 +147,7 @@ export function OneSongCard({
           </div>
           <div>
             <p className="text-sm font-semibold">{track.title} added to rotation</p>
-            <p className="text-xs text-muted">It'll grow on you — or it won't.</p>
+            <p className="text-xs text-muted">It&apos;ll grow on you — or it won&apos;t.</p>
           </div>
         </div>
       </div>
@@ -167,7 +233,8 @@ export function OneSongCard({
             id="card-add-btn"
             className="btn-green"
             onClick={handleAdd}
-            style={{ flex: 1 }}
+            disabled={addDisabled}
+            style={{ flex: 1, opacity: addDisabled ? 0.5 : 1 }}
           >
             Add it in
           </button>
@@ -175,7 +242,8 @@ export function OneSongCard({
             id="card-dismiss-btn"
             className="btn-ghost"
             onClick={handleDismiss}
-            style={{ flex: 1 }}
+            disabled={dismissDisabled}
+            style={{ flex: 1, opacity: dismissDisabled ? 0.5 : 1 }}
           >
             Not now
           </button>

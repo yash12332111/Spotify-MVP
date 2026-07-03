@@ -1,12 +1,12 @@
 "use client";
 // app/(shell)/page.tsx — Home
 // ─────────────────────────────────────────────────────────────
-// Phase 2: renders ISHITA_SNAPSHOT immediately (instant first paint),
-// then concurrently fetches /api/pick. When result arrives (≤3s),
-// swaps in the live AI result. If >3s, keeps snapshot (cold-start guard).
-//
-// Persona switcher updates persona_id and re-fetches /api/pick.
-// Session ID is persisted in localStorage (24h TTL, server-managed).
+// Phase 3: signal loop wired.
+// - "Add it in" → POST /api/signal { action: "keep" } + play
+// - "Not now"   → POST /api/signal { action: "dismiss" } + auto-fetch next pick
+// - ⟳ button    → ignore signal → advance-day → pick
+// - Persona switch while card shown → ignore signal first
+// - RotationStrip fetches live from GET /api/rotation
 // ─────────────────────────────────────────────────────────────
 import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
@@ -17,10 +17,7 @@ import { OneSongCard } from "@/components/OneSongCard";
 import { RotationStrip } from "@/components/RotationStrip";
 import { usePlayer } from "@/lib/player";
 import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
-import {
-  SEED_ROTATION,
-  SEED_TRACKS,
-} from "@/lib/seedData";
+import { SEED_TRACKS } from "@/lib/seedData";
 
 // ── Time-aware greeting ──────────────────────────────────────
 function greeting(): string {
@@ -81,6 +78,9 @@ function HomeInner() {
 
   // Session ID ref (stable, no re-render)
   const sessionIdRef = useRef<string>("");
+
+  // Rotation strip refresh key — increment to trigger re-fetch
+  const [rotationRefreshKey, setRotationRefreshKey] = useState(0);
 
   // ── Initialise on mount ──────────────────────────────────────
   useEffect(() => {
@@ -175,9 +175,30 @@ function HomeInner() {
   const currentPersona = personas[personaIdx];
   const personaName = currentPersona?.name ?? "Ishita";
 
-  const switchPersona = useCallback(() => {
+  // Fire ignore signal for current unacted card (3G spec)
+  const fireIgnoreSignal = useCallback(async (trackId: string, personaId: string) => {
+    try {
+      await fetch("/api/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current || null,
+          persona_id: personaId,
+          track_id: trackId,
+          action: "ignore",
+        }),
+      });
+    } catch { /* fire-and-forget */ }
+  }, []);
+
+  const switchPersona = useCallback(async () => {
+    // If card is currently shown (state a), fire ignore signal first (3G)
+    const currentPersona = personas[personaIdx];
+    if (currentPersona && pickResult.decision === "card" && pickResult.track) {
+      await fireIgnoreSignal(pickResult.track.id, currentPersona.id);
+    }
     setPersonaIdx((i) => (i + 1) % Math.max(personas.length, 1));
-  }, [personas.length]);
+  }, [personas, personaIdx, pickResult, fireIgnoreSignal]);
 
   // Track shown in the card (from live pick or URL param override)
   const trackIdParam = searchParams.get("trackId");
@@ -300,12 +321,32 @@ function HomeInner() {
           <button
             id="home-refresh-btn"
             aria-label="Advance day and get new pick"
-            onClick={() => {
-              if (currentPersona) fetchPick(currentPersona.id);
+            disabled={pickLoading}
+            onClick={async () => {
+              if (!currentPersona) return;
+              // Fire ignore signal for current unacted card first (3G)
+              if (pickResult.decision === "card" && pickResult.track) {
+                await fireIgnoreSignal(pickResult.track.id, currentPersona.id);
+              }
+              // Advance the simulated day
+              try {
+                await fetch("/api/advance-day", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    session_id: sessionIdRef.current || null,
+                    persona_id: currentPersona.id,
+                  }),
+                });
+              } catch { /* ignore advance-day errors */ }
+              // Refresh rotation strip
+              setRotationRefreshKey((k) => k + 1);
+              // Fetch new pick
+              fetchPick(currentPersona.id);
             }}
             style={{
               background: pickLoading ? "rgba(255,255,255,0.08)" : "none",
-              border: "none", cursor: "pointer",
+              border: "none", cursor: pickLoading ? "not-allowed" : "pointer",
               color: "var(--text-primary)", padding: 8, borderRadius: 6,
               transition: "background 0.2s",
             }}
@@ -347,6 +388,13 @@ function HomeInner() {
             track={cardTrack as Parameters<typeof OneSongCard>[0]["track"]}
             reasonLine={reasonLine}
             initialState="a"
+            sessionId={sessionIdRef.current || undefined}
+            personaId={currentPersona?.id}
+            momentLabel={currentPersona?.default_moment}
+            onKeep={() => setRotationRefreshKey((k) => k + 1)}
+            onDismiss={() => {
+              if (currentPersona) fetchPick(currentPersona.id);
+            }}
           />
         ) : (
           /* Silence state */
@@ -377,7 +425,11 @@ function HomeInner() {
       </div>
 
       {/* ── Rotation strip ────────────────────────────────────── */}
-      <RotationStrip tracks={SEED_ROTATION} />
+      <RotationStrip
+        sessionId={sessionIdRef.current || undefined}
+        personaId={currentPersona?.id}
+        refreshKey={rotationRefreshKey}
+      />
 
       {/* ── Made for you ─────────────────────────────────────── */}
       <div className="shelf">

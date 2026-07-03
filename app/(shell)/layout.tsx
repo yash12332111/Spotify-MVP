@@ -1,13 +1,28 @@
 // app/(shell)/layout.tsx
 // ─────────────────────────────────────────────────────────────
-// The chrome wrapper for all shell pages (Home, Search, Library).
-// Phase 0: empty shell — just renders children.
-// Phase 1: add phone frame, BottomTabs, NowPlayingBar.
+// The phone-frame chrome wrapper for all shell pages.
+// - 390px centered on desktop, full-width on mobile (< 640px)
+// - BottomTabs + NowPlayingBar fixed at bottom inside the frame
+// - page-scroll area above the bottom bar
 // ─────────────────────────────────────────────────────────────
+import { BottomTabs } from "@/components/BottomTabs";
+import { NowPlayingBar } from "@/components/NowPlayingBar";
+
 export default function ShellLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <div className="phone-frame">
+      {/* Scrollable page content */}
+      <main className="page-scroll">{children}</main>
+
+      {/* Fixed bottom bar: NowPlayingBar + BottomTabs */}
+      <div className="bottom-bar">
+        <NowPlayingBar />
+        <BottomTabs />
+      </div>
+    </div>
+  );
 }

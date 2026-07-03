@@ -1,8 +1,8 @@
 "use client";
-// app/(shell)/search/page.tsx
 import { useState, useMemo, useCallback } from "react";
-import { Search as SearchIcon, Play } from "lucide-react";
+import { Search as SearchIcon, Play, ExternalLink } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { SEED_TRACKS } from "@/lib/seedData";
 import { usePlayer } from "@/lib/player";
 
@@ -57,11 +57,14 @@ export default function SearchPage() {
         setActiveGenre(null); // toggle off
       } else {
         setActiveGenre(label);
-        // Auto-play the first track in this genre
+        // Auto-play a random track in this genre
         const genre = GENRES.find((g) => g.label === label);
         if (genre) {
-          const first = SEED_TRACKS.find(genre.filter);
-          if (first) play(first);
+          const matches = SEED_TRACKS.filter(genre.filter);
+          if (matches.length > 0) {
+            const randomPick = matches[Math.floor(Math.random() * matches.length)];
+            play(randomPick);
+          }
         }
       }
     },
@@ -114,13 +117,24 @@ export default function SearchPage() {
                 </div>
               )}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
               <p className="text-base font-medium truncate" style={{ color: isActive ? "var(--green)" : "var(--text-primary)" }}>
                 {t.title}
               </p>
               <p className="text-sm text-muted truncate">{t.artist}</p>
             </div>
-            <Play size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
+              <Play size={16} style={{ color: "var(--text-muted)" }} />
+              <Link 
+                href={`/?state=a&trackId=${t.id}`}
+                onClick={(e) => e.stopPropagation()} // don't trigger the row play()
+                aria-label={`Open ${t.title} card`}
+                style={{ display: "flex", color: "var(--text-muted)", padding: 4 }}
+              >
+                <ExternalLink size={16} />
+              </Link>
+            </div>
           </button>
         );
       })}

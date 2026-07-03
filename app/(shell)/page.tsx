@@ -8,7 +8,7 @@
 // Time-of-day greeting runs on client only to avoid hydration
 // mismatch (E1-10). useSearchParams wrapped in Suspense by parent.
 // ─────────────────────────────────────────────────────────────
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { RotateCcw } from "lucide-react";
@@ -39,10 +39,20 @@ const _PERSONA_IDS = SEED_PERSONAS.map((p) => p.id); void _PERSONA_IDS;
 function HomeInner() {
   const searchParams = useSearchParams();
   const rawState = searchParams.get("state") ?? "a";
+  const trackId = searchParams.get("trackId");
+  
   const cardState = (["a", "c", "d"].includes(rawState) ? rawState : "a") as
     | "a"
     | "c"
     | "d";
+
+  const cardTrack = useMemo(() => {
+    if (trackId) {
+      const found = SEED_TRACKS.find((t) => t.id === trackId);
+      if (found) return found;
+    }
+    return DISCOVERY_CARD_TRACK;
+  }, [trackId]);
 
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
@@ -144,8 +154,12 @@ function HomeInner() {
       {/* ── One Song In card ────────────────────────────────── */}
       <div style={{ padding: "16px 16px 0" }}>
         <OneSongCard
-          track={DISCOVERY_CARD_TRACK}
-          reasonLine="Sounds like Prateek Kuhad — calm tempo, indie feel, 9 PM vibe"
+          track={cardTrack}
+          reasonLine={
+            cardTrack.id === DISCOVERY_CARD_TRACK.id 
+              ? "Sounds like Prateek Kuhad — calm tempo, indie feel, 9 PM vibe"
+              : `Because you searched for ${cardTrack.title}`
+          }
           initialState={cardState}
         />
       </div>

@@ -10,10 +10,12 @@
 // ─────────────────────────────────────────────────────────────
 import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { RotateCcw } from "lucide-react";
 import { QuickPickGrid } from "@/components/QuickPickGrid";
 import { OneSongCard } from "@/components/OneSongCard";
 import { RotationStrip } from "@/components/RotationStrip";
+import { usePlayer } from "@/lib/player";
 import {
   QUICK_PICKS,
   DISCOVERY_CARD_TRACK,
@@ -31,7 +33,7 @@ function greeting(): string {
 }
 
 // ── Persona switcher state ───────────────────────────────────
-const PERSONA_IDS = SEED_PERSONAS.map((p) => p.id);
+const _PERSONA_IDS = SEED_PERSONAS.map((p) => p.id); void _PERSONA_IDS;
 
 // ── Inner component that reads searchParams ──────────────────
 function HomeInner() {
@@ -45,6 +47,7 @@ function HomeInner() {
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
   const [personaIdx, setPersonaIdx] = useState(0);
+  const { play } = usePlayer();
 
   // Client-only greeting to avoid hydration mismatch (E1-10)
   useEffect(() => {
@@ -169,7 +172,21 @@ function HomeInner() {
         </div>
         <div className="h-scroll">
           {madeForYou.map((t) => (
-            <div key={t.id} style={{ flexShrink: 0, width: 140, cursor: "pointer" }}>
+            <button
+              key={t.id}
+              id={`made-for-you-${t.id}`}
+              onClick={() => play(t)}
+              aria-label={`Play ${t.title} by ${t.artist}`}
+              style={{
+                flexShrink: 0,
+                width: 140,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                textAlign: "left",
+              }}
+            >
               <div
                 style={{
                   width: 140,
@@ -178,26 +195,28 @@ function HomeInner() {
                   overflow: "hidden",
                   marginBottom: 8,
                   background: "var(--raised)",
+                  position: "relative",
                 }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={t.artwork_url}
                   alt={t.title}
                   width={140}
                   height={140}
                   style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                  unoptimized
                 />
               </div>
-              <p className="text-sm font-medium truncate">{t.title}</p>
+              <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{t.title}</p>
               <p className="text-xs text-muted truncate">{t.artist}</p>
-            </div>
+            </button>
           ))}
         </div>
       </div>
 
       {/* Bottom padding */}
       <div style={{ height: 16 }} />
+
     </div>
   );
 }

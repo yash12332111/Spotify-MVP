@@ -72,19 +72,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // iOS first-tap audio context unlock (E1-3)
+  // Use a tiny silent data-URI so we don't need a real src.
+  // This avoids the "no supported source" error from play()-with-no-src.
   const unlock = useCallback(() => {
     if (unlockedRef.current) return;
     unlockedRef.current = true;
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.muted = true;
-    audio.play().then(() => {
-      audio.pause();
-      audio.muted = false;
-      audio.currentTime = 0;
-    }).catch(() => {
-      audio.muted = false;
-    });
+    // Create a throwaway audio element with a silent data URI
+    const silent = new Audio(
+      "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"
+    );
+    silent.volume = 0;
+    silent.play().then(() => silent.pause()).catch(() => {/* ignore */});
   }, []);
 
   // play — MUST be called synchronously in a tap handler (E1-2)

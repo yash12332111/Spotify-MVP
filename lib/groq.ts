@@ -34,8 +34,6 @@ async function callGroqTier(
   messages: { role: "system" | "user"; content: string }[],
   timeoutMs: number
 ): Promise<{ ok: true; content: string } | { ok: false }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(GROQ_ENDPOINT, {
       method: "POST",
@@ -49,9 +47,8 @@ async function callGroqTier(
         response_format: { type: "json_object" }, // E2-4
         messages,
       }),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    clearTimeout(timer);
     if (!res.ok) return { ok: false };
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
@@ -60,7 +57,6 @@ async function callGroqTier(
     if (!content) return { ok: false };
     return { ok: true, content };
   } catch {
-    clearTimeout(timer);
     return { ok: false }; // timeout or network error
   }
 }

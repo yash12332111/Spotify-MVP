@@ -60,6 +60,7 @@ function HomeInner() {
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
   const [catalog, setCatalog] = useState<typeof SEED_TRACKS>([]);
+  const [showTooltip, setShowTooltip] = useState(false);
   const { play } = usePlayer();
 
   // Live personas from API (falls back to snapshot persona name)
@@ -90,6 +91,11 @@ function HomeInner() {
   useEffect(() => {
     sessionIdRef.current = getOrCreateSessionId();
     setGreeting(greeting());
+    setRotationRefreshKey(1); // initial fetch
+
+    if (!localStorage.getItem("hide_persona_tooltip")) {
+      setShowTooltip(true);
+    }
 
     // Load live personas
     fetch("/api/personas")
@@ -243,6 +249,10 @@ function HomeInner() {
   // "Made for you" shelf — next 4
   const madeForYou = shuffledCatalog.slice(6, 10);
 
+  const dismissTooltip = () => {
+    localStorage.setItem("hide_persona_tooltip", "true");
+    setShowTooltip(false);
+  };
 
   return (
     <div style={{ paddingTop: 52 }}>
@@ -258,6 +268,8 @@ function HomeInner() {
                   localStorage.setItem("coach_mark_2_done", "true");
                   setShowCoachMark2(false);
                 }
+                setShowTooltip(false);
+                localStorage.setItem("hide_persona_tooltip", "true");
                 setIsPersonaSheetOpen(true);
               }}
               style={{
@@ -297,6 +309,63 @@ function HomeInner() {
                 <span>See how it behaves for other listeners.</span>
                 <button onClick={(e) => { e.stopPropagation(); localStorage.setItem("coach_mark_2_done", "true"); setShowCoachMark2(false); }} style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "#000" }}>✕</button>
                 <div style={{ position: "absolute", top: -6, left: 12, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "6px solid var(--green)" }} />
+              </div>
+            )}
+            
+            {showTooltip && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: -8,
+                  marginTop: 14,
+                  background: "var(--green)",
+                  color: "#000",
+                  padding: "16px",
+                  borderRadius: 12,
+                  width: 260,
+                  zIndex: 9999,
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+                  animation: "bounceIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
+                  transformOrigin: "top left",
+                }}
+              >
+                {/* Arrow pointing up */}
+                <div style={{
+                  position: "absolute", 
+                  top: -8, 
+                  left: 18,
+                  width: 0, 
+                  height: 0,
+                  borderLeft: "8px solid transparent",
+                  borderRight: "8px solid transparent",
+                  borderBottom: "8px solid var(--green)",
+                }} />
+                
+                <h3 className="text-base font-bold mb-1" style={{ color: "#000" }}>Change the persona!</h3>
+                <p className="text-sm mb-4" style={{ color: "rgba(0,0,0,0.8)", lineHeight: 1.4 }}>
+                  Tap here to switch users and see how the AI instantly adapts the entire app's recommendations.
+                </p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dismissTooltip();
+                  }}
+                  style={{
+                    background: "rgba(0,0,0,0.15)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: 20,
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    width: "100%",
+                    transition: "background 0.2s",
+                  }}
+                >
+                  Got it
+                </button>
               </div>
             )}
           </div>

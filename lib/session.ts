@@ -75,50 +75,58 @@ async function bootstrapFreshSession(
     .from("personas")
     .select("id, taste_vector");
 
+  const promises: Promise<any>[] = [];
+
   for (const p of personaRows ?? []) {
-    await supabase.from("session_personas").upsert({
-      session_id: sid,
-      persona_id: p.id,
-      taste_vector: p.taste_vector,
-      throttle_multipliers: { wind_down: 1.0, lean_back: 1.0, commute: 1.0, focus: 1.0 },
-      simulated_day: 0,
-      last_active_at: new Date().toISOString(),
-    });
+    promises.push(
+      supabase.from("session_personas").upsert({
+        session_id: sid,
+        persona_id: p.id,
+        taste_vector: p.taste_vector,
+        throttle_multipliers: { wind_down: 1.0, lean_back: 1.0, commute: 1.0, focus: 1.0 },
+        simulated_day: 0,
+        last_active_at: new Date().toISOString(),
+      })
+    );
   }
 
   // Mid-journey seed state (3F): for each persona, seed rotation entries
-  // so evaluators aren't at t=0
   for (const personaId of personaIds) {
-    // Get 2 discovery tracks to pre-seed (different from each other — E3-7)
-    const { data: discoveryTracks } = await supabase
-      .from("tracks")
-      .select("id")
-      .eq("role", "discovery")
-      .eq("playable", true)
-      .order("survival_rate_similar_users", { ascending: false })
-      .limit(10);
+    promises.push(
+      (async () => {
+        const { data: discoveryTracks } = await supabase
+          .from("tracks")
+          .select("id")
+          .eq("role", "discovery")
+          .eq("playable", true)
+          .order("survival_rate_similar_users", { ascending: false })
+          .limit(10);
 
-    if (discoveryTracks && discoveryTracks.length >= 2) {
-      // 1 survivor (exposure_count=3, survived=true)
-      await supabase.from("session_rotation").upsert({
-        session_id: sid,
-        persona_id: personaId,
-        track_id: discoveryTracks[0].id,
-        exposure_count: 3,
-        survived: true,
-        last_exposed_at: new Date().toISOString(),
-      });
-      // 1 almost-survivor (exposure_count=2, survived=false)
-      await supabase.from("session_rotation").upsert({
-        session_id: sid,
-        persona_id: personaId,
-        track_id: discoveryTracks[1].id,
-        exposure_count: 2,
-        survived: false,
-        last_exposed_at: new Date().toISOString(),
-      });
-    }
+        if (discoveryTracks && discoveryTracks.length >= 2) {
+          await supabase.from("session_rotation").upsert([
+            {
+              session_id: sid,
+              persona_id: personaId,
+              track_id: discoveryTracks[0].id,
+              exposure_count: 3,
+              survived: true,
+              last_exposed_at: new Date().toISOString(),
+            },
+            {
+              session_id: sid,
+              persona_id: personaId,
+              track_id: discoveryTracks[1].id,
+              exposure_count: 2,
+              survived: false,
+              last_exposed_at: new Date().toISOString(),
+            }
+          ]);
+        }
+      })()
+    );
   }
+
+  await Promise.all(promises);
 
   return { session_id: sid, persona_ids: personaIds, is_fresh: true };
 }

@@ -180,16 +180,24 @@ export async function POST(req: NextRequest) {
       (row as { track_id: string; survival_rate: number }).survival_rate;
   }
 
-  // Rank by survival rate with high random jitter for demo purposes
-  const ranked = finalPool
-    .map((t) => {
-      const baseRate = survivalMap[t.id] ?? t.survival_rate_similar_users ?? 0.5;
-      return {
-        ...t,
-        _rate: baseRate + (Math.random() * 0.5), // High jitter so it changes every time
-      };
-    })
+  // Rank by genuine survival rate first
+  const withRates = finalPool.map((t) => {
+    const baseRate = survivalMap[t.id] ?? t.survival_rate_similar_users ?? 0.5;
+    return { ...t, _baseRate: baseRate };
+  }).sort((a, b) => b._baseRate - a._baseRate);
+
+  // Fix: Constrain jitter to ONLY shuffle among tracks within a top-N cluster
+  // of near-tied survival_rate values (e.g. within 0.05 of the top score).
+  const topRate = withRates[0]?._baseRate ?? 0;
+  const topCluster = withRates.filter(t => (topRate - t._baseRate) <= 0.05);
+  const remaining = withRates.filter(t => (topRate - t._baseRate) > 0.05);
+
+  // Shuffle only the top cluster
+  const shuffledTop = topCluster
+    .map((t) => ({ ...t, _rate: t._baseRate + (Math.random() * 0.001) }))
     .sort((a, b) => b._rate - a._rate);
+
+  const ranked = [...shuffledTop, ...remaining.map((t) => ({ ...t, _rate: t._baseRate }))];
 
   const pick = ranked[0];
   const survivalRanking = ranked.slice(0, 5).map((t) => ({ track_id: t.id, title: t.title, rate: t._rate }));

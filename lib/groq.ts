@@ -26,8 +26,8 @@ const MomentSchema = z.object({
   reasoning: z.string(),
 });
 
-// Disabled forced silence for testing so we always see a card
-export const SILENCE_MOMENT_LABELS = new Set<string>();
+// Enable forced silence for contexts where recommendations shouldn't interrupt
+export const SILENCE_MOMENT_LABELS = new Set<string>(["commute", "focus", "sleep", "workout"]);
 
 async function callGroqTier(
   key: string,

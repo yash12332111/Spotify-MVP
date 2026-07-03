@@ -48,7 +48,7 @@ export default function AboutPage() {
         <section>
           <h2 className="text-sm font-bold" style={{ color: "var(--green)", marginBottom: 8, textTransform: "uppercase" }}>Scope & Simulation</h2>
           <p className="text-sm" style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
-            This is a functional prototype built for demonstration. The "catalog" is limited to ~60 tracks. The "moment" is simulated based on the chosen persona (Ishita, Vaishnavi, Haripriya) rather than your actual device sensors. The AI inference, however, is real and runs live on every pick.
+            This is a functional prototype built for demonstration (Live at <a href="https://spotify-mvp-chi.vercel.app/" style={{ color: "var(--green)" }}>https://spotify-mvp-chi.vercel.app/</a>). The "catalog" is limited to ~60 tracks. The "moment" is simulated based on the chosen persona (Ishita, Vaishnavi, Haripriya) rather than your actual device sensors. The AI inference, however, is real and runs live on every pick.
           </p>
         </section>
 

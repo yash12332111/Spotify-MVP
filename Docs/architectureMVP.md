@@ -152,7 +152,7 @@ Keeps and dismisses are logged per-session, the next pick demonstrably changes, 
 - **Signals:** `POST /api/signal` `{session_id, persona_id, track_id, action: keep|dismiss|ignore}`
 - **Asymmetric learning (the thesis, as a visible number):** `keep` shifts the session taste vector toward the kept track with high weight; `ignore`/passive ≈ zero. Both weights appear in the trace
 - **Dismiss throttling:** 2 consecutive dismisses in a moment-type → that moment's frequency multiplier drops (future opens more likely silent); a keep raises it. Multiplier in trace
-- **Re-surfacing & survival:** kept tracks reappear in the rotation strip across simulated days; 3+ exposures or a save → `survived`; survived-count per persona = the live North Star
+- **Re-surfacing & survival:** kept tracks reappear in the rotation strip across simulated days; 3+ exposures → `survived`; survived-count per persona = the live North Star
 - **Advancing the day — dual affordance (mouse-first):** pull-to-refresh on touch, AND an always-visible **refresh glyph in the Home header** ("Next open") inside the phone frame for desktop. Each advance = a new no-intent open on a new simulated day
 - **Mid-journey seeded state (so the payoff is visible immediately):** Ishita's session starts with 1 song already survived (visible in rotation + North Star = 1) and 1 kept song at 2 exposures — one advance-day away from surviving. The evaluator lands inside a *working* system, not at t=0 of an empty one
 - "Add it in" also pushes the track into the now-playing bar and starts playback (the accept must feel like a play, not a form submit)

@@ -7,6 +7,7 @@
 //  - play(track) must be called synchronously inside a user tap
 //    handler (no await before it) — iOS Safari requirement (E1-2)
 //  - iOS first-tap unlock: muted play()+pause() on first interaction
+//  - On CDN expiry, auto-retry via /api/itunes-preview
 //  - Always .catch() the play() promise (E1-1)
 //  - Guard NaN duration before computing progress (E1-6)
 //  - pause() before changing src to avoid DOMException (E1-5)
@@ -29,7 +30,7 @@ type PlayerState = {
   play: (track: Track) => void;
   pause: () => void;
   toggle: () => void;
-  unlock: () => void; // call on first user tap anywhere
+  unlock: () => void;
 };
 
 const PlayerContext = createContext<PlayerState | null>(null);
@@ -44,7 +45,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Create the single global audio element once
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = "none"; // don't preload — preview URLs are always ready
+    audio.preload = "none";
     audioRef.current = audio;
 
     const onTimeUpdate = () => {
@@ -52,10 +53,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setProgress(audio.currentTime / audio.duration);
       }
     };
-    const onEnded = () => {
-      setPlaying(false);
-      setProgress(0);
-    };
+    const onEnded = () => { setPlaying(false); setProgress(0); };
     const onPause = () => setPlaying(false);
     const onPlay  = () => setPlaying(true);
 
@@ -90,13 +88,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // play — MUST be called synchronously in a tap handler (E1-2)
+  // Auto-retries with a fresh iTunes URL if the CDN link has expired.
   const play = useCallback((newTrack: Track) => {
     const audio = audioRef.current;
     if (!audio) return;
 
     unlock();
-
-    // pause before changing src to avoid DOMException (E1-5)
     audio.pause();
 
     if (track?.id !== newTrack.id) {
@@ -106,11 +103,38 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setProgress(0);
     }
 
-    // synchronous .play() call — no await here (E1-2)
-    audio.play().catch((err: Error) => {
-      console.warn("[player] play() failed:", err.message);
-      setPlaying(false);
-      // Toast would go here in a later phase
+    // Synchronous .play() — no await before this (E1-2)
+    audio.play().catch(async (err: Error) => {
+      console.warn("[player] play() failed, trying iTunes fallback:", err.message);
+
+      // NotAllowedError = genuine autoplay block, don't retry
+      if (err.name === "NotAllowedError") {
+        console.warn("[player] Autoplay blocked — needs user gesture");
+        return;
+      }
+
+      // Any other error: CDN expiry, network glitch — fetch fresh URL
+      try {
+        const res = await fetch(
+          `/api/itunes-preview?title=${encodeURIComponent(newTrack.title)}&artist=${encodeURIComponent(newTrack.artist)}`
+        );
+        if (!res.ok) throw new Error(`itunes-preview returned ${res.status}`);
+        const data = (await res.json()) as { previewUrl: string };
+        if (!data.previewUrl) throw new Error("no previewUrl in response");
+
+        // Retry with fresh URL. The audio context is already unlocked
+        // by the initial tap, so this async retry will work on iOS too.
+        audio.pause();
+        audio.src = data.previewUrl;
+        audio.currentTime = 0;
+        audio.play().catch((retryErr: Error) => {
+          console.warn("[player] Retry also failed:", retryErr.message);
+          setPlaying(false);
+        });
+      } catch (fetchErr) {
+        console.warn("[player] iTunes fallback fetch failed:", fetchErr);
+        setPlaying(false);
+      }
     });
   }, [track, unlock]);
 

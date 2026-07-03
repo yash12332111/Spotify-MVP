@@ -71,25 +71,33 @@ export async function POST(req: NextRequest) {
   const { persona_id, session_id } = body;
 
   const t0 = performance.now();
-  // Ensure session is valid (bootstrap if needed — 2C)
-  const { session_id: sid, is_fresh } = await ensureSession(session_id);
-  tBootstrap = performance.now() - t0;
+  
+  // 1. Fire parallel independent network requests immediately
+  const ensureSessionPromise = ensureSession(session_id);
+  const personaPromise = supabase.from("personas").select("*").eq("id", persona_id).single();
+  const tracksPromise = supabase.from("tracks").select("*").eq("playable", true).eq("role", "discovery");
 
-  const t1 = performance.now();
-
-  // ── Fetch persona ─────────────────────────────────────────────────────────
-  const { data: personaData, error: personaErr } = await supabase
-    .from("personas")
-    .select("*")
-    .eq("id", persona_id)
-    .single();
+  const [
+    { data: personaData, error: personaErr },
+    { data: allDiscovery }
+  ] = await Promise.all([personaPromise, tracksPromise]);
 
   if (personaErr || !personaData) {
     return NextResponse.json({ error: "Persona not found" }, { status: 404 });
   }
   const persona = personaData as PersonaRow;
 
-  // Fetch session_persona (mutated taste vector)
+  // 2. Fire Groq LLM call now that we have the persona (hides LLM latency during bootstrap)
+  const t3 = performance.now();
+  const personaContext = persona.default_context ?? {};
+  const momentPromise = classifyMoment(personaContext, persona.name);
+
+  // 3. Wait for bootstrap to finish
+  const { session_id: sid, is_fresh } = await ensureSessionPromise;
+  tBootstrap = performance.now() - t0;
+
+  // 4. Fetch session_persona
+  const t1 = performance.now();
   const { data: sessionPersonaData } = await supabase
     .from("session_personas")
     .select("*")
@@ -101,14 +109,8 @@ export async function POST(req: NextRequest) {
   const tasteVector = sessionPersona?.taste_vector ?? persona.taste_vector;
   tOtherDB += performance.now() - t1;
 
+  // 5. Filter 1: Taste
   const t2 = performance.now();
-  // ── Filter 1: Taste ───────────────────────────────────────────────────────
-  const { data: allDiscovery } = await supabase
-    .from("tracks")
-    .select("*")
-    .eq("playable", true)
-    .eq("role", "discovery");
-
   const candidates: TrackRow[] = allDiscovery ?? [];
   const TASTE_THRESHOLD = 0.4;
 
@@ -125,10 +127,8 @@ export async function POST(req: NextRequest) {
   }
   tTaste = performance.now() - t2;
 
-  const t3 = performance.now();
-  // ── Filter 2: Moment (Groq, 3-tier) ──────────────────────────────────────
-  const personaContext = persona.default_context ?? {};
-  const momentResult = await classifyMoment(personaContext, persona.name);
+  // 6. Filter 2: Wait for Moment (Groq, 3-tier)
+  const momentResult = await momentPromise;
   tGroqMoment = performance.now() - t3;
   
   const t4 = performance.now();

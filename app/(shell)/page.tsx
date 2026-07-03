@@ -158,7 +158,9 @@ function HomeInner() {
         // Keep showing snapshot on error — never blank
       }
     } finally {
-      setPickLoading(false);
+      if (pickControllerRef.current === ctrl) {
+        setPickLoading(false);
+      }
     }
   }, []);
 

@@ -26,8 +26,8 @@ const MomentSchema = z.object({
   reasoning: z.string(),
 });
 
-// Hard-coded silence labels (applied in code, never by model — spec 2D)
-export const SILENCE_MOMENT_LABELS = new Set(["commute", "focus", "sleep", "workout"]);
+// Disabled forced silence for testing so we always see a card
+export const SILENCE_MOMENT_LABELS = new Set<string>();
 
 async function callGroqTier(
   key: string,

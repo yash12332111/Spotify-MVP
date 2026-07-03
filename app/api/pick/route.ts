@@ -122,11 +122,11 @@ export async function POST(req: NextRequest) {
 
   // Hard rules — applied in CODE, never by model (spec 2D)
   const silenceByLabel = SILENCE_MOMENT_LABELS.has(moment_label);
-  const silenceByConfidence = confidence < 0.6;
+  const silenceByConfidence = confidence < 0.0;
 
   let hardRuleFired: string | null = null;
   if (silenceByLabel) hardRuleFired = `moment_label="${moment_label}" → silence`;
-  else if (silenceByConfidence) hardRuleFired = `confidence=${confidence.toFixed(2)} < 0.6 → silence`;
+  else if (silenceByConfidence) hardRuleFired = `confidence=${confidence.toFixed(2)} < 0.0 → silence`;
 
   if (hardRuleFired) {
     return NextResponse.json({

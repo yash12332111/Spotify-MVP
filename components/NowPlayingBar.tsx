@@ -3,17 +3,13 @@
 import { usePlayer } from "@/lib/player";
 import { Play, Pause } from "lucide-react";
 import Image from "next/image";
+import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 
 export function NowPlayingBar() {
   const { track, playing, progress, toggle } = usePlayer();
 
   // If nothing has been played yet, show Ishita's default (Kasoor)
-  const display = track ?? {
-    title: "Kasoor",
-    artist: "Prateek Kuhad",
-    artwork_url:
-      "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/29/ea/60/29ea6006-3c44-0fce-4b3b-f58a8c0e31c0/source/600x600bb.jpg",
-  };
+  const display = track ?? ISHITA_SNAPSHOT.track;
 
   return (
     <div className="npb" role="region" aria-label="Now playing">

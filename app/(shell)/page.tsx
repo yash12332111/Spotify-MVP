@@ -243,42 +243,54 @@ function HomeInner() {
                 style={{
                   position: "absolute",
                   top: "100%",
-                  left: 0,
-                  marginTop: 8,
-                  background: "var(--accent)",
+                  left: -8, // slight offset to align better
+                  marginTop: 14,
+                  background: "var(--green)",
                   color: "#000",
-                  padding: "12px",
-                  borderRadius: 8,
-                  width: 220,
-                  zIndex: 50,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                  padding: "16px",
+                  borderRadius: 12,
+                  width: 260,
+                  zIndex: 9999, // High z-index to stay above everything
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+                  animation: "bounceIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards",
+                  transformOrigin: "top left",
                 }}
               >
-                <p className="text-sm font-bold mb-1">Click here to change the persona!</p>
-                <p className="text-xs mb-3 opacity-90">See how recommendations adapt.</p>
+                {/* Arrow pointing up */}
+                <div style={{
+                  position: "absolute", 
+                  top: -8, 
+                  left: 18,
+                  width: 0, 
+                  height: 0,
+                  borderLeft: "8px solid transparent",
+                  borderRight: "8px solid transparent",
+                  borderBottom: "8px solid var(--green)",
+                }} />
+                
+                <h3 className="text-base font-bold mb-1" style={{ color: "#000" }}>Change the persona!</h3>
+                <p className="text-sm mb-4" style={{ color: "rgba(0,0,0,0.8)", lineHeight: 1.4 }}>
+                  Tap here to switch users and see how the AI instantly adapts the entire app's recommendations.
+                </p>
                 <button
                   onClick={dismissTooltip}
                   style={{
-                    background: "rgba(0,0,0,0.1)",
+                    background: "rgba(0,0,0,0.15)",
+                    color: "#000",
                     border: "none",
-                    borderRadius: 4,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: "bold",
+                    borderRadius: 20,
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    fontWeight: 700,
                     cursor: "pointer",
                     width: "100%",
+                    transition: "background 0.2s",
                   }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
+                  onMouseOut={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.15)")}
                 >
-                  Don't show again
+                  Got it
                 </button>
-                {/* Arrow */}
-                <div style={{
-                  position: "absolute", top: -6, left: 12,
-                  width: 0, height: 0,
-                  borderLeft: "6px solid transparent",
-                  borderRight: "6px solid transparent",
-                  borderBottom: "6px solid var(--accent)",
-                }} />
               </div>
             )}
           </div>
@@ -407,7 +419,7 @@ function HomeInner() {
 
       <div style={{ height: 16 }} />
 
-      {/* shimmer keyframes */}
+      {/* shimmer and bounce keyframes */}
       <style>{`
         @keyframes shimmer {
           0% { background-position: 200% 0; }
@@ -416,6 +428,10 @@ function HomeInner() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes bounceIn {
+          0% { transform: scale(0.8); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
         }
       `}</style>
     </div>

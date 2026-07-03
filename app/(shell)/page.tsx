@@ -18,7 +18,6 @@ import { RotationStrip } from "@/components/RotationStrip";
 import { usePlayer } from "@/lib/player";
 import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 import {
-  QUICK_PICKS,
   SEED_ROTATION,
   SEED_TRACKS,
 } from "@/lib/seedData";
@@ -63,6 +62,8 @@ function HomeInner() {
 
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
+  const [catalog, setCatalog] = useState<typeof SEED_TRACKS>([]);
+  const [showTooltip, setShowTooltip] = useState(false);
   const { play } = usePlayer();
 
   // Live personas from API (falls back to snapshot persona name)
@@ -86,6 +87,10 @@ function HomeInner() {
     sessionIdRef.current = getOrCreateSessionId();
     setGreeting(greeting());
 
+    if (!localStorage.getItem("hide_persona_tooltip")) {
+      setShowTooltip(true);
+    }
+
     // Load live personas
     fetch("/api/personas")
       .then((r) => r.json())
@@ -95,6 +100,18 @@ function HomeInner() {
         }
       })
       .catch(() => {/* silently ignore */});
+
+    // Load catalog
+    fetch("/api/catalog")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.tracks && d.tracks.length > 0) {
+          setCatalog(d.tracks);
+        } else {
+          setCatalog(SEED_TRACKS); // fallback
+        }
+      })
+      .catch(() => setCatalog(SEED_TRACKS));
   }, []);
 
   // ── Fetch live pick ──────────────────────────────────────────
@@ -175,8 +192,31 @@ function HomeInner() {
   const reasonLine = pickResult.reason_line ?? ISHITA_SNAPSHOT.reason_line;
   const showCard = pickResult.decision !== "silence" || !!trackIdParam;
 
-  // "Made for you" shelf
-  const madeForYou = SEED_TRACKS.slice(4, 8);
+  // Deterministically shuffle catalog based on personaName so lists change per persona
+  const shuffledCatalog = useMemo(() => {
+    if (catalog.length === 0) return [];
+    let hash = 0;
+    for (let i = 0; i < personaName.length; i++) {
+      hash = personaName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const seed = Math.abs(hash);
+    const copy = [...catalog];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = (seed + i) % (i + 1);
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }, [catalog, personaName]);
+
+  // "Quick picks" — first 6
+  const quickPicks = shuffledCatalog.slice(0, 6);
+  // "Made for you" shelf — next 4
+  const madeForYou = shuffledCatalog.slice(6, 10);
+
+  const dismissTooltip = () => {
+    localStorage.setItem("hide_persona_tooltip", "true");
+    setShowTooltip(false);
+  };
 
   return (
     <div style={{ paddingTop: 52 }}>
@@ -184,19 +224,64 @@ function HomeInner() {
       <div style={{ padding: "0 16px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           {/* Avatar / persona switcher */}
-          <button
-            id="persona-switcher-btn"
-            onClick={switchPersona}
-            aria-label="Switch persona"
-            style={{
-              width: 32, height: 32, borderRadius: "50%",
-              background: "var(--green)", border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 700, fontSize: 13, color: "#000",
-            }}
-          >
-            {personaName[0]}
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              id="persona-switcher-btn"
+              onClick={switchPersona}
+              aria-label="Switch persona"
+              style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: "var(--green)", border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 13, color: "#000",
+              }}
+            >
+              {personaName[0]}
+            </button>
+            {showTooltip && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 8,
+                  background: "var(--accent)",
+                  color: "#000",
+                  padding: "12px",
+                  borderRadius: 8,
+                  width: 220,
+                  zIndex: 50,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+              >
+                <p className="text-sm font-bold mb-1">Click here to change the persona!</p>
+                <p className="text-xs mb-3 opacity-90">See how recommendations adapt.</p>
+                <button
+                  onClick={dismissTooltip}
+                  style={{
+                    background: "rgba(0,0,0,0.1)",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Don't show again
+                </button>
+                {/* Arrow */}
+                <div style={{
+                  position: "absolute", top: -6, left: 12,
+                  width: 0, height: 0,
+                  borderLeft: "6px solid transparent",
+                  borderRight: "6px solid transparent",
+                  borderBottom: "6px solid var(--accent)",
+                }} />
+              </div>
+            )}
+          </div>
           <span className="text-base font-bold">{greeting_}</span>
           <button
             id="home-refresh-btn"
@@ -274,7 +359,7 @@ function HomeInner() {
         <h2 className="text-base font-bold" style={{ padding: "0 16px", marginBottom: 12 }}>
           Quick picks
         </h2>
-        <QuickPickGrid tracks={QUICK_PICKS} />
+        <QuickPickGrid tracks={quickPicks.length > 0 ? quickPicks : SEED_TRACKS.slice(0,6)} />
       </div>
 
       {/* ── Rotation strip ────────────────────────────────────── */}

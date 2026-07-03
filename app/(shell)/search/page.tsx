@@ -1,3 +1,4 @@
+"use client";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Search as SearchIcon, Play, ExternalLink } from "lucide-react";
 import Image from "next/image";
@@ -8,7 +9,6 @@ import { usePlayer } from "@/lib/player";
 type Track = typeof SEED_TRACKS[0];
 
 // Genre tiles — each maps to a mood/context filter on SEED_TRACKS
-const GENRES = [
 const GENRES = [
   { label: "Hindi Pop",   color: "#7c3aed", filter: (t: Track) => t.artist.toLowerCase().includes("arijit") || t.artist.toLowerCase().includes("anuv") || t.artist.toLowerCase().includes("prateek") || t.artist.toLowerCase().includes("mithoon") },
   { label: "Indie Folk",  color: "#0891b2", filter: (t: Track) => t.mood === "dreamy" || t.mood === "melancholic" },

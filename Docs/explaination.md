@@ -74,5 +74,20 @@ During Phase 4, the initial plan called for replacing the large green tooltip wi
 
 ---
 
+## Miscellaneous Bug Fixes & Hotfixes
+
+Throughout the session, we also tackled several critical operational fixes to ensure the Vercel deployment was stable and presentation-ready:
+
+**Prompts / Issues:**
+> *"21:40:54.579 Running build in Washington, D.C... Type error: Cannot find name 'useMemo'."*
+> *"not working as expected, check the code and let me know what is going wrong"* (Regarding broken image links)
+
+**What we built / fixed:**
+1. **Build Failures:** The initial deployment to Vercel crashed due to missing React hooks (like `useMemo` and `useEffect`) in `page.tsx` and `OneSongCard.tsx`. We tracked down all Type mismatches and missing imports, ran `npx tsc --noEmit` locally, and resolved all errors to achieve a green build.
+2. **Broken Spotify Images:** The initial prototype hardcoded image URLs directly from Spotify (`i.scdn.co`). These URLs expire frequently, which led to broken image icons in the Rotation Strip and the Now Playing Bar. We fixed this by updating the fallback states to use verified, persistent image URLs (from our `ISHITA_SNAPSHOT` payload) ensuring the UI always looks polished.
+3. **Double-Tap Protection:** We added state-locks (`addDisabled`, `dismissDisabled`) to the card buttons so that impatient clicking during demos wouldn't fire duplicate database requests or crash the component state.
+
+---
+
 ### Conclusion
-Over a single day, this prototype went from a static frontend shell to a fully dynamic, AI-powered system complete with live inference, database state management, learning loops, and consumer-grade UX polish. 
+Over a single day, this prototype went from a static frontend shell to a fully dynamic, AI-powered system complete with live inference, database state management, learning loops, and consumer-grade UX polish.

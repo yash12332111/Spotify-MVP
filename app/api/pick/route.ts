@@ -57,6 +57,9 @@ function overlapScore(
 }
 
 export async function POST(req: NextRequest) {
+  const tStart = performance.now();
+  let tBootstrap = 0, tTaste = 0, tGroqMoment = 0, tHardRule = 0, tSurvival = 0, tReasonLine = 0, tOtherDB = 0;
+
   // Parse body
   let body: z.infer<typeof BodySchema>;
   try {
@@ -67,8 +70,12 @@ export async function POST(req: NextRequest) {
 
   const { persona_id, session_id } = body;
 
+  const t0 = performance.now();
   // Ensure session is valid (bootstrap if needed — 2C)
   const { session_id: sid, is_fresh } = await ensureSession(session_id);
+  tBootstrap = performance.now() - t0;
+
+  const t1 = performance.now();
 
   // ── Fetch persona ─────────────────────────────────────────────────────────
   const { data: personaData, error: personaErr } = await supabase
@@ -92,7 +99,9 @@ export async function POST(req: NextRequest) {
 
   const sessionPersona = sessionPersonaData as SessionPersonaRow | null;
   const tasteVector = sessionPersona?.taste_vector ?? persona.taste_vector;
+  tOtherDB += performance.now() - t1;
 
+  const t2 = performance.now();
   // ── Filter 1: Taste ───────────────────────────────────────────────────────
   const { data: allDiscovery } = await supabase
     .from("tracks")
@@ -114,10 +123,15 @@ export async function POST(req: NextRequest) {
       tasteFailed.push(track);
     }
   }
+  tTaste = performance.now() - t2;
 
+  const t3 = performance.now();
   // ── Filter 2: Moment (Groq, 3-tier) ──────────────────────────────────────
   const personaContext = persona.default_context ?? {};
   const momentResult = await classifyMoment(personaContext, persona.name);
+  tGroqMoment = performance.now() - t3;
+  
+  const t4 = performance.now();
   const { moment_label, confidence, reasoning, source } = momentResult;
 
   // Hard rules — applied in CODE, never by model (spec 2D)
@@ -129,6 +143,8 @@ export async function POST(req: NextRequest) {
   else if (silenceByConfidence) hardRuleFired = `confidence=${confidence.toFixed(2)} < 0.0 → silence`;
 
   if (hardRuleFired) {
+    tHardRule = performance.now() - t4;
+    console.log(`[Timing] Bootstrap=${tBootstrap.toFixed(1)}ms | Taste=${tTaste.toFixed(1)}ms | GroqMoment=${tGroqMoment.toFixed(1)}ms | HardRule=${tHardRule.toFixed(1)}ms | Survival=${tSurvival.toFixed(1)}ms | ReasonLine=${tReasonLine.toFixed(1)}ms | OtherDB=${tOtherDB.toFixed(1)}ms | Total=${(performance.now() - tStart).toFixed(1)}ms`);
     return NextResponse.json({
       decision: "silence",
       trace: {
@@ -139,6 +155,7 @@ export async function POST(req: NextRequest) {
         survival_ranking: [],
         pick_or_silence_cause: hardRuleFired,
         session_id: sid,
+        timing: { tBootstrap, tTaste, tGroqMoment, tHardRule, tSurvival, tReasonLine, tOtherDB, tTotal: performance.now() - tStart },
       },
     });
   }
@@ -152,6 +169,8 @@ export async function POST(req: NextRequest) {
   const finalPool = momentFit.length > 0 ? momentFit : tastePassed;
 
   if (finalPool.length === 0) {
+    tHardRule = performance.now() - t4;
+    console.log(`[Timing] Bootstrap=${tBootstrap.toFixed(1)}ms | Taste=${tTaste.toFixed(1)}ms | GroqMoment=${tGroqMoment.toFixed(1)}ms | HardRule=${tHardRule.toFixed(1)}ms | Survival=${tSurvival.toFixed(1)}ms | ReasonLine=${tReasonLine.toFixed(1)}ms | OtherDB=${tOtherDB.toFixed(1)}ms | Total=${(performance.now() - tStart).toFixed(1)}ms`);
     return NextResponse.json({
       decision: "silence",
       trace: {
@@ -162,10 +181,13 @@ export async function POST(req: NextRequest) {
         survival_ranking: [],
         pick_or_silence_cause: "no tracks survived all filters",
         session_id: sid,
+        timing: { tBootstrap, tTaste, tGroqMoment, tHardRule, tSurvival, tReasonLine, tOtherDB, tTotal: performance.now() - tStart },
       },
     });
   }
+  tHardRule = performance.now() - t4;
 
+  const t5 = performance.now();
   // ── Filter 3: Proven (survival ranking) ──────────────────────────────────
   // Fetch survival stats for candidates
   const poolIds = finalPool.map((t) => t.id);
@@ -201,8 +223,10 @@ export async function POST(req: NextRequest) {
 
   const pick = ranked[0];
   const survivalRanking = ranked.slice(0, 5).map((t) => ({ track_id: t.id, title: t.title, rate: t._rate }));
+  tSurvival = performance.now() - t5;
 
   // ── Reason line ───────────────────────────────────────────────────────────
+  const t6 = performance.now();
   let reasonLine: string;
   const isDefaultPick = pick.id === persona.default_track_id;
 
@@ -221,6 +245,9 @@ export async function POST(req: NextRequest) {
   const { _score: _s, _rate: _r, ...trackOut } = pick as typeof pick & { _score?: number; _rate?: number };
   void _s; void _r;
 
+  tReasonLine = performance.now() - t6;
+  console.log(`[Timing] Bootstrap=${tBootstrap.toFixed(1)}ms | Taste=${tTaste.toFixed(1)}ms | GroqMoment=${tGroqMoment.toFixed(1)}ms | HardRule=${tHardRule.toFixed(1)}ms | Survival=${tSurvival.toFixed(1)}ms | ReasonLine=${tReasonLine.toFixed(1)}ms | OtherDB=${tOtherDB.toFixed(1)}ms | Total=${(performance.now() - tStart).toFixed(1)}ms`);
+
   return NextResponse.json({
     decision: "card",
     track: trackOut,
@@ -233,6 +260,7 @@ export async function POST(req: NextRequest) {
       survival_ranking: survivalRanking,
       pick_or_silence_cause: "top survival rank after moment filter",
       session_id: sid,
+      timing: { tBootstrap, tTaste, tGroqMoment, tHardRule, tSurvival, tReasonLine, tOtherDB, tTotal: performance.now() - tStart },
     },
   });
 }

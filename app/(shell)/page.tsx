@@ -41,7 +41,7 @@ type LivePersona = {
   default_time: string;
 };
 
-const PICK_TIMEOUT_MS = 3000; // cold-start guard (2F)
+const PICK_TIMEOUT_MS = 9000; // cold-start guard (2F)
 
 // ── Session ID (localStorage, 24h managed by server) ─────────
 function getOrCreateSessionId(): string {
@@ -129,7 +129,7 @@ function HomeInner() {
 
     setPickLoading(true);
 
-    // Cold-start guard: if >3s, keep snapshot, swap when resolved
+    // Cold-start guard: if >9s, keep snapshot, swap when resolved
     const timeoutId = setTimeout(() => {
       setPickLoading(false); // show snapshot, fetch continues in background
     }, PICK_TIMEOUT_MS);

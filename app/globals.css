@@ -377,3 +377,4 @@ body {
   50%       { opacity: 0.5; }
 }
 .pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }

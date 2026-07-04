@@ -69,7 +69,16 @@ export function OneSongCard({
   const [addDisabled, setAddDisabled] = useState(false);
   const [dismissDisabled, setDismissDisabled] = useState(false);
   const [showCoachMark, setShowCoachMark] = useState(false);
+  const [highlightInfo, setHighlightInfo] = useState(true);
   const { play } = usePlayer();
+
+  useEffect(() => {
+    // Info button highlight effect for 1 second on mount
+    const timer = setTimeout(() => {
+      setHighlightInfo(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (initialState === "a" && !localStorage.getItem("coach_mark_1_done")) {
@@ -242,10 +251,20 @@ export function OneSongCard({
             </p>
             <button
               onClick={onReasonClick}
-              style={{ background: "none", border: "none", padding: 0, margin: 0, textAlign: "left", cursor: "pointer", width: "100%" }}
+              style={{ 
+                background: highlightInfo ? "rgba(255, 255, 255, 0.15)" : "none", 
+                border: "none", 
+                padding: highlightInfo ? "4px 8px" : "4px 0", 
+                margin: highlightInfo ? "0 -8px" : "0", 
+                borderRadius: 6, 
+                textAlign: "left", 
+                cursor: "pointer", 
+                width: highlightInfo ? "calc(100% + 16px)" : "100%",
+                transition: "all 0.5s ease" 
+              }}
             >
-              <p className="text-xs" style={{ color: "#B3B3B3", lineHeight: 1.5, display: "inline" }}>
-                {reasonLine} <span style={{ opacity: 0.5, fontSize: 10 }}>ⓘ</span>
+              <p className="text-xs" style={{ color: highlightInfo ? "#FFFFFF" : "#B3B3B3", lineHeight: 1.5, display: "inline", transition: "color 0.5s ease" }}>
+                {reasonLine} <span style={{ opacity: highlightInfo ? 1 : 0.5, fontSize: 10, transition: "opacity 0.5s ease", display: "inline-block", transform: highlightInfo ? "scale(1.2)" : "scale(1)" }}>ⓘ</span>
               </p>
             </button>
           </div>

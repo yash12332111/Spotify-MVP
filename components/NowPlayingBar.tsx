@@ -6,7 +6,7 @@ import Image from "next/image";
 import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 
 export function NowPlayingBar() {
-  const { track, playing, progress, toggle } = usePlayer();
+  const { track, playing, progress, toggle, play } = usePlayer();
 
   // If nothing has been played yet, show Ishita's default (Kasoor)
   const display = track ?? ISHITA_SNAPSHOT.track;
@@ -47,7 +47,13 @@ export function NowPlayingBar() {
       {/* Play / pause */}
       <button
         id="npb-play-pause"
-        onClick={toggle}
+        onClick={() => {
+          if (!track) {
+            play(display as any);
+          } else {
+            toggle();
+          }
+        }}
         aria-label={playing ? "Pause" : "Play"}
         style={{
           background: "none",

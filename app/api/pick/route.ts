@@ -96,22 +96,42 @@ export async function POST(req: NextRequest) {
   const { session_id: sid, is_fresh } = await ensureSessionPromise;
   tBootstrap = performance.now() - t0;
 
-  // 4. Fetch session_persona
+  // 4. Fetch session_persona and previously seen tracks for this session
   const t1 = performance.now();
-  const { data: sessionPersonaData } = await supabase
+  
+  const sessionPersonaPromise = supabase
     .from("session_personas")
     .select("*")
     .eq("session_id", sid)
     .eq("persona_id", persona_id)
     .single();
 
+  const signalsPromise = supabase.from("session_signals").select("track_id").eq("session_id", sid);
+  const rotationPromise = supabase.from("session_rotation").select("track_id").eq("session_id", sid);
+
+  const [
+    { data: sessionPersonaData },
+    { data: signalsData },
+    { data: rotationData }
+  ] = await Promise.all([sessionPersonaPromise, signalsPromise, rotationPromise]);
+
   const sessionPersona = sessionPersonaData as SessionPersonaRow | null;
   const tasteVector = sessionPersona?.taste_vector ?? persona.taste_vector;
+  
+  const usedTrackIds = new Set<string>();
+  for (const row of signalsData ?? []) usedTrackIds.add((row as any).track_id);
+  for (const row of rotationData ?? []) usedTrackIds.add((row as any).track_id);
+
   tOtherDB += performance.now() - t1;
 
   // 5. Filter 1: Taste
   const t2 = performance.now();
-  const candidates: TrackRow[] = allDiscovery ?? [];
+  let candidates: TrackRow[] = (allDiscovery ?? []).filter(t => !usedTrackIds.has(t.id));
+  
+  // Fallback if all tracks are exhausted
+  if (candidates.length === 0) {
+    candidates = allDiscovery ?? [];
+  }
   const TASTE_THRESHOLD = 0.4;
 
   const tastePassed: (TrackRow & { _score: number })[] = [];

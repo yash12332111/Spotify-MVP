@@ -1,9 +1,8 @@
 "use client";
 // components/WelcomeScreen.tsx
 // ─────────────────────────────────────────────────────────────
-// Opening splash shown on first visit.
-// Dismissed via "Start Exploring" → stored in localStorage so
-// it never appears again in the same browser session.
+// Opening splash shown on first visit. No scrolling — fits in
+// one screen. Dismissed via "Start Exploring" button.
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from "react";
@@ -15,23 +14,19 @@ interface WelcomeScreenProps {
 const HOW_TO_TEST: { emoji: string; text: string }[] = [
   {
     emoji: "🎵",
-    text: "One song, hand-picked by AI — just for this moment.",
+    text: "Each session surfaces one AI-picked song — curated for this listener, right now.",
   },
   {
     emoji: "👤",
-    text: "Tap the avatar (top-left) to switch between listener personas.",
+    text: "Tap the avatar (top-left) to switch personas and watch the AI adapt instantly.",
   },
   {
     emoji: "✅",
-    text: "Keep or dismiss the card — every signal trains the rotation.",
+    text: "Keep or dismiss the card — each action feeds back into the rotation algorithm.",
   },
   {
-    emoji: "🔄",
-    text: "Hit the refresh icon to advance the day and get a fresh pick.",
-  },
-  {
-    emoji: "💡",
-    text: "Tap \"Why this song?\" on the card to see the AI's reasoning.",
+    emoji: "ⓘ",
+    text: "Tap the ⓘ icon on the card to see exactly why the AI chose this song.",
   },
 ];
 
@@ -39,7 +34,6 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
-  // Animate in after mount
   useEffect(() => {
     const t = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(t);
@@ -59,7 +53,8 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.88)",
+        padding: "16px",
+        background: "rgba(0,0,0,0.9)",
         backdropFilter: "blur(18px)",
         WebkitBackdropFilter: "blur(18px)",
         transition: "opacity 480ms ease",
@@ -67,23 +62,17 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         pointerEvents: leaving ? "none" : "auto",
       }}
     >
-      {/* Card */}
+      {/* Card — no overflow, no scroll */}
       <div
         style={{
-          width: "min(360px, calc(100vw - 32px))",
-          maxHeight: "calc(100dvh - 48px)",
-          overflowY: "auto",
-          scrollbarWidth: "none",
-          background:
-            "linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)",
-          borderRadius: 24,
+          width: "min(360px, 100%)",
+          background: "linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)",
+          borderRadius: 22,
           border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow:
-            "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(29,185,84,0.15)",
-          padding: "36px 28px 28px",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(29,185,84,0.15)",
+          padding: "24px 24px 20px",
           display: "flex",
           flexDirection: "column",
-          gap: 0,
           transition: "transform 480ms cubic-bezier(0.22,1,0.36,1), opacity 480ms ease",
           transform: leaving
             ? "scale(0.92) translateY(16px)"
@@ -92,121 +81,94 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
             : "scale(0.88) translateY(24px)",
         }}
       >
-        {/* Logo badge */}
-        <div style={{ textAlign: "center", marginBottom: 20 }}>
+        {/* Header row: badge + title */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
           <div
             style={{
-              display: "inline-flex",
+              flexShrink: 0,
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #1DB954 0%, #17a349 100%)",
+              boxShadow: "0 0 24px rgba(29,185,84,0.45)",
+              display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 64,
-              height: 64,
-              borderRadius: "50%",
-              background:
-                "linear-gradient(135deg, #1DB954 0%, #17a349 100%)",
-              boxShadow: "0 0 32px rgba(29,185,84,0.4)",
-              marginBottom: 16,
-              fontSize: 28,
+              fontSize: 22,
             }}
           >
             🎧
           </div>
-
-          {/* Title */}
-          <h1
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              letterSpacing: "-0.5px",
-              color: "#fff",
-              marginBottom: 10,
-              lineHeight: 1.2,
-            }}
-          >
-            Welcome to{" "}
-            <span style={{ color: "#1DB954" }}>One Song In</span>
-          </h1>
-
-          {/* Description */}
-          <p
-            style={{
-              fontSize: 13.5,
-              lineHeight: 1.65,
-              color: "rgba(255,255,255,0.65)",
-              maxWidth: 280,
-              margin: "0 auto",
-            }}
-          >
-            An AI-powered music discovery MVP — each session surfaces{" "}
-            <strong style={{ color: "rgba(255,255,255,0.85)" }}>
-              exactly one song
-            </strong>{" "}
-            chosen for the right listener, in the right moment. Signals from
-            every keep or dismiss feed back into the rotation algorithm in
-            real time.
-          </p>
+          <div>
+            <h1
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: "-0.4px",
+                color: "#fff",
+                lineHeight: 1.2,
+                marginBottom: 2,
+              }}
+            >
+              Welcome to{" "}
+              <span style={{ color: "#1DB954" }}>One Song In</span>
+            </h1>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.3 }}>
+              AI-powered music discovery MVP
+            </p>
+          </div>
         </div>
 
-        {/* Divider */}
-        <div
+        {/* Description */}
+        <p
           style={{
-            height: 1,
-            background: "rgba(255,255,255,0.07)",
-            margin: "4px 0 20px",
-          }}
-        />
-
-        {/* How to test */}
-        <div
-          style={{
-            background: "rgba(255,255,255,0.04)",
-            borderRadius: 16,
-            border: "1px solid rgba(255,255,255,0.06)",
-            padding: "18px 16px",
-            marginBottom: 24,
+            fontSize: 13,
+            lineHeight: 1.6,
+            color: "rgba(255,255,255,0.6)",
+            marginBottom: 14,
           }}
         >
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.8px",
-              textTransform: "uppercase",
-              color: "#1DB954",
-              marginBottom: 14,
-            }}
-          >
-            How to test the MVP
-          </p>
+          Every session, the AI picks{" "}
+          <strong style={{ color: "rgba(255,255,255,0.88)" }}>exactly one song</strong>{" "}
+          for the right listener at the right moment. Keeps and dismisses shape the rotation in real time.
+        </p>
 
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
-            {HOW_TO_TEST.map(({ emoji, text }, i) => (
-              <li
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                  color: "rgba(255,255,255,0.78)",
-                  animation: `welcomeItem 350ms ease ${100 + i * 60}ms both`,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 16,
-                    flexShrink: 0,
-                    marginTop: 1,
-                  }}
-                >
-                  {emoji}
-                </span>
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.07)", marginBottom: 14 }} />
+
+        {/* How to test */}
+        <p
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.9px",
+            textTransform: "uppercase",
+            color: "#1DB954",
+            marginBottom: 10,
+          }}
+        >
+          How to test the MVP
+        </p>
+
+        <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 9, marginBottom: 18 }}>
+          {HOW_TO_TEST.map(({ emoji, text }, i) => (
+            <li
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.75)",
+                animation: `welcomeItem 320ms ease ${80 + i * 55}ms both`,
+              }}
+            >
+              <span style={{ fontSize: 15, flexShrink: 0, marginTop: 0 }}>{emoji}</span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ul>
 
         {/* CTA */}
         <button
@@ -217,9 +179,9 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
             background: "linear-gradient(135deg, #1DB954 0%, #17a349 100%)",
             color: "#000",
             fontWeight: 800,
-            fontSize: 15,
-            letterSpacing: "0.2px",
-            padding: "14px 24px",
+            fontSize: 14,
+            letterSpacing: "0.1px",
+            padding: "13px 24px",
             borderRadius: 50,
             border: "none",
             cursor: "pointer",
@@ -246,23 +208,10 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
           }}
         >
           <span>Start Exploring</span>
-          <span style={{ fontSize: 18 }}>→</span>
+          <span style={{ fontSize: 16 }}>→</span>
         </button>
-
-        {/* Fine print */}
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.28)",
-            marginTop: 14,
-          }}
-        >
-          Spotify MVP · AI-inferenced rotation survival
-        </p>
       </div>
 
-      {/* Keyframes */}
       <style>{`
         @keyframes welcomeItem {
           from { opacity: 0; transform: translateX(-8px); }

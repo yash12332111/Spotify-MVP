@@ -1,30 +1,31 @@
 "use client";
 // components/OneSongCard.tsx
 // ─────────────────────────────────────────────────────────────
-// Three states:
-//   A — Card: art, track, artist, reason, [Add it in] / [Not now]
-//   C — Added: micro-confirmation, card melts out
-//   D — Silent: nothing (Home is pixel-normal)
+// Four states:
+//   a      — Card: art, track, artist, reason, [Add it in] / [Not now]
+//   c      — Kept: rich rotation-explanation panel (user dismisses)
+//   d-msg  — Dismissed: "No problem" message (auto-fades after 3.5s)
+//   gone   — Completely gone (parent can render next pick)
 //
 // Phase 3: buttons fire /api/signal (keep | dismiss | ignore)
 // ─────────────────────────────────────────────────────────────
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import { usePlayer } from "@/lib/player";
 import type { Track } from "@/lib/seedData";
 
-type CardState = "a" | "c" | "d";
+type CardState = "a" | "c" | "d-msg" | "gone";
 
 type Props = {
   track: Track;
   reasonLine?: string;
-  initialState?: CardState;
+  initialState?: "a" | "c" | "d-msg" | "gone";
   // Phase 3 signal props
   sessionId?: string;
   personaId?: string;
   momentLabel?: string;
-  onKeep?: () => void;    // called after keep signal fires
-  onDismiss?: () => void; // called after dismiss signal fires
+  onKeep?: () => void;    // called when user closes the "c" panel
+  onDismiss?: () => void; // called when "d-msg" auto-fades out
   // Phase 4 props
   onReasonClick?: () => void;
 };
@@ -64,19 +65,23 @@ export function OneSongCard({
   onDismiss,
   onReasonClick,
 }: Props) {
-  const [state, setState] = useState<CardState>(initialState);
+  const [state, setState] = useState<CardState>(initialState as CardState);
   const [melting, setMelting] = useState(false);
   const [addDisabled, setAddDisabled] = useState(false);
   const [dismissDisabled, setDismissDisabled] = useState(false);
   const [showCoachMark, setShowCoachMark] = useState(false);
   const [highlightInfo, setHighlightInfo] = useState(true);
+  const [dMsgVisible, setDMsgVisible] = useState(false);
+  const onDismissRef = useRef(onDismiss);
+  const onKeepRef = useRef(onKeep);
   const { play } = usePlayer();
 
+  // Keep refs current without stale closures
+  useEffect(() => { onDismissRef.current = onDismiss; }, [onDismiss]);
+  useEffect(() => { onKeepRef.current = onKeep; }, [onKeep]);
+
   useEffect(() => {
-    // Info button highlight effect for 1 second on mount
-    const timer = setTimeout(() => {
-      setHighlightInfo(false);
-    }, 1000);
+    const timer = setTimeout(() => setHighlightInfo(false), 1000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -86,6 +91,21 @@ export function OneSongCard({
     }
   }, [initialState]);
 
+  // Auto-fade "d-msg" state after 3.5 s, then call onDismiss to load next pick
+  useEffect(() => {
+    if (state !== "d-msg") return;
+    // Animate in
+    requestAnimationFrame(() => setDMsgVisible(true));
+    const t = setTimeout(() => {
+      setDMsgVisible(false);
+      setTimeout(() => {
+        setState("gone");
+        onDismissRef.current?.();
+      }, 400);
+    }, 3500);
+    return () => clearTimeout(t);
+  }, [state]);
+
   const dismissCoachMark = useCallback(() => {
     if (showCoachMark) {
       localStorage.setItem("coach_mark_1_done", "true");
@@ -94,95 +114,160 @@ export function OneSongCard({
   }, [showCoachMark]);
 
   const handleAdd = useCallback(() => {
-    if (addDisabled) return; // E3-1: prevent double-tap
+    if (addDisabled) return;
     setAddDisabled(true);
     dismissCoachMark();
 
-    // E3-2: play synchronously BEFORE any await
     play(track);
 
-    // Fire signal in background — never await before play
+    // Fire signal — onKeep deferred to when user closes the "c" panel
     if (sessionId && personaId) {
-      fireSignal({
-        sessionId,
-        personaId,
-        trackId: track.id,
-        action: "keep",
-        momentLabel,
-      }).then(() => onKeep?.());
-    } else {
-      onKeep?.();
+      fireSignal({ sessionId, personaId, trackId: track.id, action: "keep", momentLabel });
     }
 
     setMelting(true);
     setTimeout(() => setState("c"), 400);
-  }, [addDisabled, play, track, sessionId, personaId, momentLabel, onKeep, dismissCoachMark]);
+  }, [addDisabled, play, track, sessionId, personaId, momentLabel, dismissCoachMark]);
 
   const handleDismiss = useCallback(() => {
-    if (dismissDisabled) return; // E3-1: prevent double-tap
+    if (dismissDisabled) return;
     setDismissDisabled(true);
     dismissCoachMark();
 
-    // Fire signal in background
+    // Signal fires immediately, but UI waits for the message to fade
     if (sessionId && personaId) {
-      fireSignal({
-        sessionId,
-        personaId,
-        trackId: track.id,
-        action: "dismiss",
-        momentLabel,
-      }).then(() => onDismiss?.());
-    } else {
-      onDismiss?.();
+      fireSignal({ sessionId, personaId, trackId: track.id, action: "dismiss", momentLabel });
     }
 
     setMelting(true);
-    setTimeout(() => setState("d"), 400);
-  }, [dismissDisabled, track, sessionId, personaId, momentLabel, onDismiss]);
+    setTimeout(() => setState("d-msg"), 400);
+  }, [dismissDisabled, track, sessionId, personaId, momentLabel, dismissCoachMark]);
 
-  // State D — silent: render nothing
-  if (state === "d") return null;
+  // ── State: completely gone ───────────────────────────────────
+  if (state === "gone") return null;
 
-  // State C — added confirmation
+  // ── State C — "Add it in" rich explanation ───────────────────
   if (state === "c") {
     return (
       <div className="shelf fade-in" style={{ paddingTop: 0 }}>
         <div
           style={{
-            background: "var(--surface)",
+            background: "linear-gradient(160deg, #0d2818 0%, #162d1f 100%)",
             borderRadius: "var(--radius-card)",
-            padding: "16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
+            border: "1px solid rgba(29,185,84,0.2)",
+            padding: "18px 16px 16px",
           }}
         >
-          <div
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "var(--green)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 0 16px rgba(29,185,84,0.4)",
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                  <path d="M3 9l4.5 4.5 7.5-9" stroke="#000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold" style={{ color: "#fff" }}>
+                  It&apos;s in your rotation now.
+                </p>
+                <p className="text-xs text-muted">{track.title}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Body copy */}
+          <p
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "var(--green)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
+              fontSize: 12.5,
+              lineHeight: 1.65,
+              color: "rgba(255,255,255,0.62)",
+              marginBottom: 14,
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M3 9l4.5 4.5 7.5-9" stroke="#000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold">{track.title} added to rotation</p>
-            <p className="text-xs text-muted">It&apos;ll grow on you — or it won&apos;t.</p>
-          </div>
+            Playing today — and it&apos;ll come back around on{" "}
+            <span style={{ color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>day 3</span> and{" "}
+            <span style={{ color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>day 6</span>, because
+            liking a new song usually takes a few listens, not one. If it earns a third play within
+            two weeks, it officially becomes part of your rotation. No extra steps from you — just
+            keep listening like you normally would.
+          </p>
+
+          {/* Got it button */}
+          <button
+            id="card-kept-close-btn"
+            onClick={() => {
+              setState("gone");
+              onKeepRef.current?.();
+            }}
+            style={{
+              width: "100%",
+              background: "rgba(29,185,84,0.12)",
+              color: "var(--green)",
+              border: "1px solid rgba(29,185,84,0.25)",
+              borderRadius: 20,
+              padding: "9px 16px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "background 150ms ease",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,185,84,0.2)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,185,84,0.12)"; }}
+          >
+            Got it
+          </button>
         </div>
       </div>
     );
   }
 
-  // State A — the card
+  // ── State D-MSG — "Not now" brief message (auto-fades) ───────
+  if (state === "d-msg") {
+    return (
+      <div
+        className="shelf"
+        style={{
+          paddingTop: 0,
+          transition: "opacity 400ms ease",
+          opacity: dMsgVisible ? 1 : 0,
+        }}
+      >
+        <div
+          style={{
+            background: "var(--raised)",
+            borderRadius: "var(--radius-card)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            padding: "16px",
+          }}
+        >
+          <p className="text-sm font-semibold" style={{ marginBottom: 6 }}>
+            No problem — nothing else changes.
+          </p>
+          <p
+            style={{
+              fontSize: 12.5,
+              lineHeight: 1.65,
+              color: "rgba(255,255,255,0.55)",
+            }}
+          >
+            Your regular mix is still right where you left it. We&apos;ll just wait for a better
+            moment to try again. If this keeps happening in the same kind of moment, we&apos;ll show
+            up less often here — you&apos;re training this as much as we are.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── State A — the card ───────────────────────────────────────
   return (
     <div
       className={`shelf${melting ? " card-melt" : " fade-in"}`}
@@ -251,20 +336,21 @@ export function OneSongCard({
             </p>
             <button
               onClick={onReasonClick}
-              style={{ 
-                background: highlightInfo ? "rgba(255, 255, 255, 0.15)" : "none", 
-                border: "none", 
-                padding: highlightInfo ? "4px 8px" : "4px 0", 
-                margin: highlightInfo ? "0 -8px" : "0", 
-                borderRadius: 6, 
-                textAlign: "left", 
-                cursor: "pointer", 
+              style={{
+                background: highlightInfo ? "rgba(255, 255, 255, 0.15)" : "none",
+                border: "none",
+                padding: highlightInfo ? "4px 8px" : "4px 0",
+                margin: highlightInfo ? "0 -8px" : "0",
+                borderRadius: 6,
+                textAlign: "left",
+                cursor: "pointer",
                 width: highlightInfo ? "calc(100% + 16px)" : "100%",
-                transition: "all 0.5s ease" 
+                transition: "all 0.5s ease",
               }}
             >
               <p className="text-xs" style={{ color: highlightInfo ? "#FFFFFF" : "#B3B3B3", lineHeight: 1.5, display: "inline", transition: "color 0.5s ease" }}>
-                {reasonLine} <span style={{ opacity: highlightInfo ? 1 : 0.5, fontSize: 10, transition: "opacity 0.5s ease", display: "inline-block", transform: highlightInfo ? "scale(1.2)" : "scale(1)" }}>ⓘ</span>
+                {reasonLine}{" "}
+                <span style={{ opacity: highlightInfo ? 1 : 0.5, fontSize: 10, transition: "opacity 0.5s ease", display: "inline-block", transform: highlightInfo ? "scale(1.2)" : "scale(1)" }}>ⓘ</span>
               </p>
             </button>
           </div>
@@ -293,7 +379,6 @@ export function OneSongCard({
           >
             <span>Spotify eased one new song in. Keep it or wave it off.</span>
             <button onClick={(e) => { e.stopPropagation(); dismissCoachMark(); }} style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "#000" }}>✕</button>
-            {/* little triangle pointer */}
             <div style={{ position: "absolute", bottom: -6, left: 16, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid var(--green)" }} />
           </div>
         )}

@@ -70,6 +70,10 @@ function HomeInner() {
   function dismissWelcome() {
     localStorage.setItem("onesong_welcomed", "true");
     setShowWelcome(false);
+    // Only reveal the persona tooltip AFTER the welcome screen is gone
+    if (!localStorage.getItem("hide_persona_tooltip")) {
+      setShowTooltip(true);
+    }
   }
 
   const [greeting_, setGreeting] = useState("");
@@ -108,16 +112,23 @@ function HomeInner() {
     setGreeting(greeting());
     setRotationRefreshKey(1); // initial fetch
 
-    if (!localStorage.getItem("hide_persona_tooltip")) {
+    // Tooltip is deferred — shown only after welcome screen is dismissed
+    // (see dismissWelcome). If already welcomed, show normally.
+    if (localStorage.getItem("onesong_welcomed") && !localStorage.getItem("hide_persona_tooltip")) {
       setShowTooltip(true);
     }
 
-    // Load live personas
+    // Load live personas — default to Ishita
     fetch("/api/personas")
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.personas) && d.personas.length > 0) {
           setPersonas(d.personas);
+          // Always open on Ishita regardless of API ordering
+          const ishitaIdx = d.personas.findIndex(
+            (p: LivePersona) => p.name.toLowerCase() === "ishita"
+          );
+          if (ishitaIdx !== -1) setPersonaIdx(ishitaIdx);
         }
       })
       .catch(() => {/* silently ignore */});

@@ -15,6 +15,7 @@ import { OneSongCard } from "@/components/OneSongCard";
 import { RotationStrip } from "@/components/RotationStrip";
 import { PersonaSheet } from "@/components/PersonaSheet";
 import { WhyThisSongSheet } from "@/components/WhyThisSongSheet";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { usePlayer } from "@/lib/player";
 import { ISHITA_SNAPSHOT } from "@/lib/snapshot";
 import { SEED_TRACKS } from "@/lib/seedData";
@@ -56,6 +57,20 @@ function getOrCreateSessionId(): string {
 // ── Inner component that reads searchParams ──────────────────
 function HomeInner() {
   const searchParams = useSearchParams();
+
+  // ── Welcome screen ───────────────────────────────────────────
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem("onesong_welcomed")) {
+      setShowWelcome(true);
+    }
+  }, []);
+
+  function dismissWelcome() {
+    localStorage.setItem("onesong_welcomed", "true");
+    setShowWelcome(false);
+  }
 
   const [greeting_, setGreeting] = useState("");
   const [activeChip, setActiveChip] = useState<"all" | "music" | "podcasts">("all");
@@ -255,7 +270,9 @@ function HomeInner() {
   };
 
   return (
-    <div style={{ paddingTop: 52 }}>
+    <>
+      {showWelcome && <WelcomeScreen onDismiss={dismissWelcome} />}
+      <div style={{ paddingTop: 52 }}>
       {/* ── Top bar ───────────────────────────────────────────── */}
       <div style={{ padding: "0 16px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -565,6 +582,7 @@ function HomeInner() {
         }
       `}</style>
     </div>
+    </>
   );
 }
 
